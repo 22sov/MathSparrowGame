@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Воробей: тапай и считай</title>
-    <!-- Подключение Telegram Web App API -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
             margin: 0;
@@ -22,8 +20,6 @@
             min-height: 100vh;
             font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
             touch-action: manipulation;
-            overflow: hidden;
-            margin: 0;
         }
         .game-wrapper {
             background: #7ec8e0;
@@ -32,6 +28,7 @@
             box-shadow: 0 16px 32px rgba(0,0,0,0.5);
             max-width: 420px;
             width: 100%;
+            position: relative;
         }
         .canvas-wrapper {
             position: relative;
@@ -58,6 +55,11 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
+            transition: opacity 0.3s ease;
+        }
+        .example-area.paused {
+            opacity: 0.3;
+            pointer-events: none;
         }
         .example-text {
             color: #f5f0d7;
@@ -73,6 +75,11 @@
             justify-content: center;
             gap: 16px;
             flex-wrap: wrap;
+            transition: opacity 0.3s ease;
+        }
+        .options-row.paused {
+            opacity: 0;
+            pointer-events: none;
         }
         .option-btn {
             background: #d9b8c4;
@@ -101,8 +108,6 @@
             font-weight: bold;
             font-size: 1.1rem;
             text-shadow: 0 1px 2px rgba(255,255,240,0.6);
-            flex-wrap: wrap;
-            gap: 6px;
         }
         .life-badge {
             background: #2f5a6b;
@@ -128,18 +133,75 @@
             transform: translateY(4px);
             box-shadow: 0 0 0 #7a4d2e;
         }
-        .timer-badge, .round-badge {
+        .pause-btn {
+            background: rgba(255, 245, 200, 0.6);
+            border: none;
+            color: #1f3d47;
+            font-size: 1.3rem;
+            padding: 2px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: all 0.1s ease;
+            line-height: 1.6;
+        }
+        .pause-btn:active {
+            transform: scale(0.9);
+        }
+        .round-badge {
             color: #1f3d47;
             font-size: 0.9rem;
             padding: 2px 12px;
             background: rgba(255, 245, 200, 0.5);
             border-radius: 30px;
         }
+        .play-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+            transition: opacity 0.5s ease;
+        }
+        .play-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .play-btn {
+            background: linear-gradient(145deg, #f7d94e, #f0b830);
+            border: none;
+            border-radius: 60px;
+            padding: 18px 48px;
+            font-size: 2rem;
+            font-weight: 800;
+            color: #1f2e33;
+            box-shadow: 0 8px 0 #b87a20, 0 12px 30px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: all 0.1s ease;
+            touch-action: manipulation;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 4px rgba(255,255,200,0.3);
+        }
+        .play-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 2px 0 #b87a20, 0 8px 20px rgba(0,0,0,0.3);
+        }
+        .play-btn:hover {
+            transform: scale(1.02);
+        }
         @media (max-width: 440px) {
             .game-wrapper { padding: 10px; }
             .example-text { font-size: 1.2rem; }
             .option-btn { font-size: 1.1rem; padding: 6px 18px; min-width: 60px; }
             .info-panel { font-size: 1rem; }
+            .play-btn { font-size: 1.5rem; padding: 14px 32px; }
         }
     </style>
 </head>
@@ -148,11 +210,14 @@
     <div class="info-panel">
         <span class="life-badge" id="lifeDisplay">❤️ 10</span>
         <span class="round-badge" id="roundDisplay">Раунд 1</span>
-        <span class="timer-badge" id="timerHint">⏳ 0с</span>
+        <button class="pause-btn" id="pauseBtn">⏸️</button>
         <button class="restart-btn" id="restartBtn">↺</button>
     </div>
-    <div class="canvas-wrapper">
+    <div class="canvas-wrapper" id="canvasWrapper">
         <canvas id="gameCanvas" width="400" height="480"></canvas>
+        <div class="play-overlay" id="playOverlay">
+            <button class="play-btn" id="playBtn">ИГРАТЬ</button>
+        </div>
     </div>
     <div class="example-area" id="exampleArea">
         <div class="example-text" id="exampleText">⏳ Ожидание примера...</div>
@@ -161,28 +226,25 @@
 </div>
 <script>
     (function(){
-        // ==================== ИНИЦИАЛИЗАЦИЯ TELEGRAM ====================
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand();
-        }
-
-        // ==================== ОСТАЛЬНОЙ КОД ИГРЫ ====================
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const lifeSpan = document.getElementById('lifeDisplay');
-        const timerHint = document.getElementById('timerHint');
         const roundDisplay = document.getElementById('roundDisplay');
         const exampleText = document.getElementById('exampleText');
         const optionsRow = document.getElementById('optionsRow');
+        const exampleArea = document.getElementById('exampleArea');
+        const playOverlay = document.getElementById('playOverlay');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
 
         const W = 400, H = 480;
         const GROUND_Y = 440;
         const SPARROW_SIZE = 28;
 
-        let gameActive = true;
+        let gameActive = false;
         let gameCompleted = false;
+        let gameStarted = false;
+        let gamePaused = false;
         let life = 10;
         let sparrowY = 240;
         let velocity = 0;
@@ -203,6 +265,12 @@
         let phase = 'idle';
         let nextExampleTime = 5.0;
         let timeSinceLastExample = 0;
+
+        let obstacles = [];
+        const OBSTACLE_SPEED = 1.2;
+        let obstacleTimer = 0;
+        const OBSTACLE_INTERVAL_MIN = 2.0;
+        const OBSTACLE_INTERVAL_MAX = 4.5;
 
         let lastTimestamp = 0;
         let deltaAccumulator = 0;
@@ -236,25 +304,97 @@
             nextExampleTime = 5.0;
             exampleText.innerText = '⏳ Ожидание примера...';
             optionsRow.innerHTML = '';
-            timerHint.innerText = '⏳ 0с';
+            
+            obstacles = [];
+            obstacleTimer = 0;
         }
 
         function resetGame() {
-            gameActive = true;
+            gameActive = false;
             gameCompleted = false;
+            gameStarted = false;
+            gamePaused = false;
+            pauseBtn.innerText = '⏸️';
+            exampleArea.classList.remove('paused');
+            optionsRow.classList.remove('paused');
             life = 10;
             sparrowY = 240;
             velocity = 0;
             deltaAccumulator = 0;
+            obstacles = [];
+            obstacleTimer = 0;
             setupRound(1);
             updateLifeDisplay();
-            timerHint.innerText = '⏳ 0с';
             exampleText.innerText = '⏳ Ожидание примера...';
             optionsRow.innerHTML = '';
-            if (tg) {
-                tg.ready();
-                tg.expand();
+            playOverlay.classList.remove('hidden');
+        }
+
+        function startGame() {
+            gameActive = true;
+            gameStarted = true;
+            gameCompleted = false;
+            gamePaused = false;
+            pauseBtn.innerText = '⏸️';
+            exampleArea.classList.remove('paused');
+            optionsRow.classList.remove('paused');
+            life = 10;
+            sparrowY = 240;
+            velocity = 0;
+            obstacles = [];
+            obstacleTimer = 0;
+            setupRound(1);
+            updateLifeDisplay();
+            exampleText.innerText = '⏳ Ожидание примера...';
+            optionsRow.innerHTML = '';
+            playOverlay.classList.add('hidden');
+        }
+
+        function togglePause() {
+            if (!gameActive || gameCompleted) return;
+            gamePaused = !gamePaused;
+            pauseBtn.innerText = gamePaused ? '▶️' : '⏸️';
+            
+            if (gamePaused) {
+                exampleArea.classList.add('paused');
+                optionsRow.classList.add('paused');
+                exampleText.innerText = '⏸️ ПАУЗА';
+                // Очищаем кнопки ответов
+                optionsRow.innerHTML = '';
+            } else {
+                exampleArea.classList.remove('paused');
+                optionsRow.classList.remove('paused');
+                // Восстанавливаем пример
+                if (currentExample && phase === 'showing') {
+                    exampleText.innerText = currentExample.text;
+                    renderOptions();
+                } else if (phase === 'waiting') {
+                    exampleText.innerText = '⏳ Следующий пример через...';
+                } else {
+                    exampleText.innerText = '⏳ Ожидание примера...';
+                }
+                lastTimestamp = 0;
             }
+        }
+
+        function renderOptions() {
+            if (!currentExample || gamePaused) return;
+            optionsRow.innerHTML = '';
+            currentExample.options.forEach((val) => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.innerText = val;
+                btn.dataset.value = val;
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleAnswer(val);
+                });
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handleAnswer(val);
+                }, { passive: false });
+                optionsRow.appendChild(btn);
+            });
         }
 
         function generateExample() {
@@ -323,29 +463,18 @@
         }
 
         function renderExample() {
+            if (gamePaused) {
+                exampleText.innerText = '⏸️ ПАУЗА';
+                optionsRow.innerHTML = '';
+                return;
+            }
+            
             if (currentExample && phase === 'showing') {
                 exampleText.innerText = currentExample.text;
-                optionsRow.innerHTML = '';
-                currentExample.options.forEach((val) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'option-btn';
-                    btn.innerText = val;
-                    btn.dataset.value = val;
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        handleAnswer(val);
-                    });
-                    btn.addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        handleAnswer(val);
-                    }, { passive: false });
-                    optionsRow.appendChild(btn);
-                });
-                timerHint.innerText = `⏳ ${Math.ceil(exampleTimer)}с`;
+                renderOptions();
             } else if (phase === 'waiting') {
                 exampleText.innerText = '⏳ Следующий пример через...';
                 optionsRow.innerHTML = '';
-                timerHint.innerText = `⏳ ${(2 - timeSinceLastExample).toFixed(1)}с`;
             } else {
                 exampleText.innerText = '⏳ Ожидание примера...';
                 optionsRow.innerHTML = '';
@@ -353,7 +482,7 @@
         }
 
         function spawnExample() {
-            if (!gameActive || gameCompleted) return;
+            if (!gameActive || gameCompleted || gamePaused) return;
             currentExample = generateExample();
             phase = 'showing';
             exampleTimer = 5.0;
@@ -361,7 +490,7 @@
         }
 
         function handleAnswer(selectedValue) {
-            if (!gameActive || !currentExample || phase !== 'showing' || gameCompleted) return;
+            if (!gameActive || !currentExample || phase !== 'showing' || gameCompleted || gamePaused) return;
 
             const isCorrect = (selectedValue === currentExample.correct);
             if (isCorrect) {
@@ -372,7 +501,11 @@
                 life = Math.max(0, life - wrongPenalty);
                 updateLifeDisplay();
                 if (wrongPenalty > 0) {
-                    exampleText.innerText = `❌ Неверно! -${wrongPenalty} очка`;
+                    if (wrongPenalty === 1) {
+                        exampleText.innerText = `❌ Неверно! -1 очко`;
+                    } else {
+                        exampleText.innerText = `❌ Неверно! -${wrongPenalty} очка`;
+                    }
                 } else {
                     exampleText.innerText = '❌ Неверно';
                 }
@@ -390,25 +523,37 @@
                     gameActive = false;
                     exampleText.innerText = '🏆 Ты настоящий Эйнштейн и Джек Воробей! 🏆';
                     optionsRow.innerHTML = '';
-                    timerHint.innerText = '🎉';
-                    if (tg) {
-                        tg.close(); // Закрываем мини-приложение после победы
-                    }
                     return;
                 } else {
+                    gamePaused = true;
+                    pauseBtn.innerText = '▶️';
+                    exampleArea.classList.add('paused');
+                    optionsRow.classList.add('paused');
                     let nextRound = round + 1;
                     let roundNames = ['', 'Первый', 'Второй', 'Третий'];
                     exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
                     optionsRow.innerHTML = '';
-                    timerHint.innerText = '⏳';
                     
                     setTimeout(() => {
                         if (gameActive) {
+                            gamePaused = false;
+                            pauseBtn.innerText = '⏸️';
+                            exampleArea.classList.remove('paused');
+                            optionsRow.classList.remove('paused');
                             setupRound(nextRound);
                             phase = 'idle';
                             timeSinceLastExample = 0;
                             nextExampleTime = 5.0;
                             exampleText.innerText = `⏳ Раунд ${nextRound} начинается...`;
+                            setTimeout(() => {
+                                if (gameActive && !gameCompleted) {
+                                    phase = 'idle';
+                                    timeSinceLastExample = 0;
+                                    nextExampleTime = 3.0;
+                                    exampleText.innerText = '⏳ Ожидание примера...';
+                                    lastTimestamp = 0;
+                                }
+                            }, 2000);
                         }
                     }, 3000);
                     return;
@@ -419,14 +564,13 @@
             currentExample = null;
             exampleTimer = 0;
             timeSinceLastExample = 0;
-            timerHint.innerText = '⏳ 2с';
             setTimeout(() => {
-                if (phase === 'waiting' && !gameCompleted) {
+                if (phase === 'waiting' && !gameCompleted && !gamePaused) {
                     renderExample();
                 }
             }, 300);
             setTimeout(() => {
-                if (phase === 'waiting' && !gameCompleted) {
+                if (phase === 'waiting' && !gameCompleted && !gamePaused) {
                     exampleText.innerText = '⏳ Следующий пример через...';
                     optionsRow.innerHTML = '';
                 }
@@ -440,14 +584,68 @@
             }
         }
 
+        function spawnObstacle() {
+            const type = Math.random() < 0.5 ? 'balloon' : 'house';
+            const x = W + 20;
+            let y, height, width;
+            
+            if (type === 'balloon') {
+                y = 25 + Math.random() * 100;
+                height = 42;
+                width = 35;
+            } else {
+                const houseHeight = 195;
+                y = GROUND_Y - 8 - houseHeight / 2;
+                height = houseHeight;
+                width = 50;
+            }
+            
+            obstacles.push({
+                type: type,
+                x: x,
+                y: y,
+                width: width,
+                height: height
+            });
+        }
+
+        function checkCollisions() {
+            const sparrowLeft = 120 - SPARROW_SIZE/2 + 4;
+            const sparrowRight = 120 + SPARROW_SIZE/2 - 4;
+            const sparrowTop = sparrowY - SPARROW_SIZE/2 + 4;
+            const sparrowBottom = sparrowY + SPARROW_SIZE/2 - 4;
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                const obsLeft = obs.x - obs.width/2;
+                const obsRight = obs.x + obs.width/2;
+                const obsTop = obs.y - obs.height/2;
+                const obsBottom = obs.y + obs.height/2;
+
+                if (sparrowLeft < obsRight && sparrowRight > obsLeft &&
+                    sparrowTop < obsBottom && sparrowBottom > obsTop) {
+                    life = 0;
+                    updateLifeDisplay();
+                    gameActive = false;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        let isTapProcessing = false;
+
         function handleTap(e) {
             e.preventDefault();
-            if (!gameActive || gameCompleted) return;
+            if (!gameActive || gameCompleted || gamePaused || isTapProcessing) return;
 
+            isTapProcessing = true;
+            
             life = Math.max(0, life - 1);
             updateLifeDisplay();
             if (life <= 0) {
                 gameActive = false;
+                isTapProcessing = false;
                 return;
             }
             
@@ -457,6 +655,10 @@
             let requiredVelocity = -Math.sqrt(2 * currentGravity * distance) * 1.15;
             requiredVelocity = Math.max(requiredVelocity, -8.0);
             velocity = requiredVelocity;
+
+            setTimeout(() => {
+                isTapProcessing = false;
+            }, 50);
         }
 
         function draw() {
@@ -475,14 +677,105 @@
             ctx.fillRect(0, GROUND_Y, W, H-GROUND_Y+4);
             ctx.fillStyle = '#7daa6a';
             ctx.fillRect(0, GROUND_Y-4, W, 8);
-            ctx.strokeStyle = '#3f6b3a';
-            ctx.lineWidth = 2;
-            for (let i=0; i<30; i++) {
-                let x = (i*13 + Date.now()/20) % W;
-                ctx.beginPath();
-                ctx.moveTo(x, GROUND_Y-2);
-                ctx.lineTo(x-3, GROUND_Y-14);
-                ctx.stroke();
+
+            for (let obs of obstacles) {
+                if (obs.type === 'balloon') {
+                    ctx.save();
+                    ctx.translate(obs.x, obs.y);
+                    
+                    ctx.strokeStyle = '#5a3e2b';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(-10, 16);
+                    ctx.lineTo(-5, 26);
+                    ctx.moveTo(10, 16);
+                    ctx.lineTo(5, 26);
+                    ctx.stroke();
+                    
+                    const grad = ctx.createRadialGradient(-8, -10, 3, 0, 0, 22);
+                    grad.addColorStop(0, '#ff6b6b');
+                    grad.addColorStop(0.6, '#e63e3e');
+                    grad.addColorStop(1, '#aa2233');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.ellipse(0, -2, 20, 24, 0, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#881122';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(0, -2, 16, 3, 0.2, 0, Math.PI*2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.ellipse(0, -2, 16, 3, -0.2, 0, Math.PI*2);
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                    ctx.beginPath();
+                    ctx.ellipse(-8, -10, 6, 8, -0.3, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#8B6914';
+                    ctx.fillRect(-10, 24, 20, 8);
+                    ctx.fillStyle = '#6B4F12';
+                    ctx.fillRect(-8, 32, 16, 4);
+                    ctx.strokeStyle = '#5a3e2b';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(-10, 24, 20, 8);
+                    
+                    ctx.restore();
+                } else {
+                    ctx.save();
+                    const houseHeight = 195;
+                    const topY = -houseHeight/2;
+                    const bottomY = houseHeight/2;
+                    
+                    ctx.translate(obs.x, obs.y);
+                    
+                    ctx.fillStyle = '#8b7355';
+                    ctx.fillRect(-28, bottomY - 6, 56, 6);
+                    
+                    ctx.fillStyle = '#d4a373';
+                    ctx.fillRect(-24, topY, 48, houseHeight);
+                    ctx.strokeStyle = '#8b6b4d';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-24, topY, 48, houseHeight);
+                    
+                    ctx.fillStyle = '#8b7355';
+                    ctx.fillRect(-26, topY - 2, 52, 6);
+                    ctx.strokeStyle = '#6b5a45';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(-26, topY - 2, 52, 6);
+                    
+                    ctx.fillStyle = '#ffd700';
+                    ctx.shadowColor = '#ffd700';
+                    ctx.shadowBlur = 4;
+                    const floors = 8;
+                    const floorHeight = 24;
+                    const startY = topY + 24;
+                    for (let f = 0; f < floors; f++) {
+                        const yPos = startY + f * floorHeight;
+                        ctx.fillRect(-16, yPos, 10, 10);
+                        ctx.fillRect(6, yPos, 10, 10);
+                        ctx.strokeStyle = '#5a3e2b';
+                        ctx.lineWidth = 1;
+                        ctx.shadowBlur = 0;
+                        ctx.strokeRect(-16, yPos, 10, 10);
+                        ctx.strokeRect(6, yPos, 10, 10);
+                        ctx.shadowBlur = 4;
+                    }
+                    ctx.shadowBlur = 0;
+                    
+                    ctx.fillStyle = '#5a3e2b';
+                    ctx.fillRect(-6, bottomY - 8, 12, 8);
+                    ctx.fillStyle = '#d4a373';
+                    ctx.fillRect(-3, bottomY - 6, 3, 4);
+                    
+                    ctx.restore();
+                }
             }
 
             const sx = 120, sy = Math.min(sparrowY, GROUND_Y - SPARROW_SIZE/2);
@@ -538,19 +831,19 @@
                 ctx.fillText('Эйнштейн и Джек Воробей!', 200, 260);
                 ctx.font = '20px sans-serif';
                 ctx.fillText('Нажмите ↺ чтобы начать заново', 200, 340);
-            } else if (!gameActive && life <= 0) {
+            } else if (!gameActive && life <= 0 && gameStarted) {
                 ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.fillRect(0, 0, W, H);
                 ctx.fillStyle = '#fadfbf';
                 ctx.font = 'bold 38px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('💔', 200, 180);
+                ctx.fillText('💥', 200, 170);
                 ctx.font = 'bold 26px sans-serif';
-                ctx.fillText('Воробей умер', 200, 260);
+                ctx.fillText('Воробей разбился!', 200, 250);
                 ctx.font = '20px sans-serif';
-                ctx.fillText('Нажмите ↺ чтобы начать', 200, 330);
-            } else if (!gameActive && sparrowY + SPARROW_SIZE/2 >= GROUND_Y) {
+                ctx.fillText('Нажмите ↺ чтобы начать', 200, 320);
+            } else if (!gameActive && sparrowY + SPARROW_SIZE/2 >= GROUND_Y && gameStarted) {
                 ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.fillRect(0, 0, W, H);
                 ctx.fillStyle = '#fadfbf';
@@ -566,7 +859,7 @@
         }
 
         function update(deltaSec) {
-            if (!gameActive || gameCompleted) return;
+            if (!gameActive || gameCompleted || gamePaused) return;
 
             velocity += currentGravity;
             sparrowY += velocity;
@@ -588,6 +881,21 @@
                 return;
             }
 
+            obstacleTimer -= deltaSec;
+            if (obstacleTimer <= 0) {
+                spawnObstacle();
+                obstacleTimer = OBSTACLE_INTERVAL_MIN + Math.random() * (OBSTACLE_INTERVAL_MAX - OBSTACLE_INTERVAL_MIN);
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].x -= OBSTACLE_SPEED;
+                if (obstacles[i].x < -50) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            checkCollisions();
+
             if (phase === 'idle') {
                 timeSinceLastExample += deltaSec;
                 if (timeSinceLastExample >= nextExampleTime) {
@@ -597,17 +905,15 @@
                 }
             } else if (phase === 'showing') {
                 exampleTimer -= deltaSec;
-                timerHint.innerText = `⏳ ${Math.ceil(exampleTimer)}с`;
                 if (exampleTimer <= 0) {
                     phase = 'waiting';
                     currentExample = null;
                     exampleTimer = 0;
                     timeSinceLastExample = 0;
-                    timerHint.innerText = '⏳ 2с';
                     exampleText.innerText = '⏳ Время вышло!';
                     optionsRow.innerHTML = '';
                     setTimeout(() => {
-                        if (phase === 'waiting' && !gameCompleted) {
+                        if (phase === 'waiting' && !gameCompleted && !gamePaused) {
                             exampleText.innerText = '⏳ Следующий пример через...';
                         }
                     }, 400);
@@ -617,8 +923,6 @@
                 if (timeSinceLastExample >= 2.0) {
                     spawnExample();
                     timeSinceLastExample = 0;
-                } else {
-                    timerHint.innerText = `⏳ ${(2 - timeSinceLastExample).toFixed(1)}с`;
                 }
             }
 
@@ -641,23 +945,25 @@
             requestAnimationFrame(gameLoop);
         }
 
-        function onCanvasClick(e) {
-            e.preventDefault();
-            handleTap(e);
-        }
-
         function attachEvents() {
-            canvas.addEventListener('click', onCanvasClick);
-            canvas.addEventListener('touchstart', function(e){
+            canvas.addEventListener('pointerdown', function(e) {
                 e.preventDefault();
-                onCanvasClick(e);
-            }, { passive: false });
+                handleTap(e);
+            });
             canvas.addEventListener('contextmenu', e => e.preventDefault());
         }
 
         restartBtn.addEventListener('click', function(){
             resetGame();
             lastTimestamp = 0;
+        });
+
+        playBtn.addEventListener('click', function(){
+            startGame();
+        });
+
+        pauseBtn.addEventListener('click', function(){
+            togglePause();
         });
 
         resetGame();
