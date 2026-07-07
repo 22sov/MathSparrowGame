@@ -3,8 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Воробей: шары и счёт</title>
+    <title>Воробей-математик</title>
+    
+    <!-- Мета-теги для Telegram Mini App -->
+    <meta name="telegram:mini-app" content="true">
+    <meta name="telegram:mini-app-url" content="https://ваш-username.github.io/воробей-математик/">
+    
+    <!-- Основные стили -->
     <style>
+        /* ... все стили остаются без изменений ... */
         * {
             margin: 0;
             padding: 0;
@@ -20,6 +27,7 @@
             min-height: 100vh;
             font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
             touch-action: manipulation;
+            overflow: hidden;
         }
         .game-wrapper {
             background: #7ec8e0;
@@ -228,8 +236,23 @@
         <div class="example-text" id="exampleText">⏳ Ожидание примера...</div>
     </div>
 </div>
+
+<!-- Подключение Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
 <script>
     (function(){
+        // Инициализация Telegram WebApp
+        let tg = null;
+        try {
+            tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand(); // Разворачивает на весь экран
+            console.log('Telegram WebApp initialized');
+        } catch(e) {
+            console.log('Not running in Telegram');
+        }
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const lifeSpan = document.getElementById('lifeDisplay');
@@ -243,8 +266,6 @@
         const W = 400, H = 480;
         const GROUND_Y = 440;
         const SPARROW_SIZE = 28;
-        const TOP_BOUNDARY = 15;
-        const MAX_UPWARD_SPEED = -6.0;
 
         let gameActive = false;
         let gameCompleted = false;
@@ -310,6 +331,7 @@
 
         let lastTimestamp = 0;
         let deltaAccumulator = 0;
+        const FIXED_DELTA = 1/60;
 
         const restartBtn = document.getElementById('restartBtn');
 
@@ -370,6 +392,16 @@
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
             playOverlay.classList.remove('hidden');
+            
+            // Обновляем Telegram WebApp при рестарте
+            if (tg) {
+                try {
+                    tg.sendData(JSON.stringify({
+                        event: 'restart',
+                        score: 0
+                    }));
+                } catch(e) {}
+            }
         }
 
         function startGame() {
@@ -391,6 +423,18 @@
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
             playOverlay.classList.add('hidden');
+            lastTimestamp = 0;
+            deltaAccumulator = 0;
+            
+            // Обновляем Telegram WebApp
+            if (tg) {
+                try {
+                    tg.sendData(JSON.stringify({
+                        event: 'start',
+                        score: 0
+                    }));
+                } catch(e) {}
+            }
         }
 
         function togglePause() {
@@ -542,6 +586,17 @@
                 life = Math.min(life + 5, 99);
                 updateLifeDisplay();
                 exampleText.innerText = '✅ Верно! +5 очков';
+                
+                // Отправляем событие в Telegram
+                if (tg) {
+                    try {
+                        tg.sendData(JSON.stringify({
+                            event: 'correct',
+                            life: Math.floor(life),
+                            round: round
+                        }));
+                    } catch(e) {}
+                }
             } else {
                 life = Math.max(0, life - wrongPenalty);
                 updateLifeDisplay();
@@ -552,6 +607,18 @@
                 }
                 if (life <= 0) {
                     gameActive = false;
+                    
+                    // Отправляем событие окончания игры в Telegram
+                    if (tg) {
+                        try {
+                            tg.sendData(JSON.stringify({
+                                event: 'game_over',
+                                life: 0,
+                                round: round,
+                                score: Math.floor(life)
+                            }));
+                        } catch(e) {}
+                    }
                     return;
                 }
             }
@@ -564,6 +631,17 @@
                     gameCompleted = true;
                     gameActive = false;
                     exampleText.innerText = '🏆 Ты настоящий Эйнштейн и Джек Воробей! 🏆';
+                    
+                    // Отправляем событие победы в Telegram
+                    if (tg) {
+                        try {
+                            tg.sendData(JSON.stringify({
+                                event: 'victory',
+                                life: Math.floor(life),
+                                round: round
+                            }));
+                        } catch(e) {}
+                    }
                     return;
                 } else {
                     gamePaused = true;
@@ -572,6 +650,17 @@
                     let nextRound = round + 1;
                     let roundNames = ['', 'Первый', 'Второй', 'Третий'];
                     exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
+                    
+                    // Отправляем событие завершения раунда в Telegram
+                    if (tg) {
+                        try {
+                            tg.sendData(JSON.stringify({
+                                event: 'round_complete',
+                                round: round,
+                                life: Math.floor(life)
+                            }));
+                        } catch(e) {}
+                    }
                     
                     setTimeout(() => {
                         if (gameActive) {
@@ -592,6 +681,7 @@
                                     countdownValue = 0;
                                     exampleText.innerText = '⏳ Ожидание примера...';
                                     lastTimestamp = 0;
+                                    deltaAccumulator = 0;
                                 }
                             }, 2000);
                         }
@@ -606,11 +696,6 @@
             nextExampleTime = 2.0;
             countdownValue = 0;
             exampleText.innerText = '⏳ Следующий пример через 3...';
-            setTimeout(() => {
-                if (phase === 'waiting' && !gameCompleted && !gamePaused) {
-                    // Таймер уже обновляется в update
-                }
-            }, 400);
         }
 
         function createBalloonPop(x, y, color) {
@@ -681,22 +766,11 @@
                 return;
             }
             
-            // Расчёт прыжка
             const targetY = sparrowY - JUMP_HEIGHT;
-            const clampedTarget = Math.max(TOP_BOUNDARY, targetY);
+            const clampedTarget = Math.max(15, targetY);
             const distance = sparrowY - clampedTarget;
             let requiredVelocity = -Math.sqrt(2 * currentGravity * distance) * 1.15;
-            
-            // Жёсткое ограничение скорости вверх
-            if (requiredVelocity < MAX_UPWARD_SPEED) {
-                requiredVelocity = MAX_UPWARD_SPEED;
-            }
-            
-            // Если воробей уже у верхней границы, не даём ему улететь выше
-            if (sparrowY <= TOP_BOUNDARY + 2) {
-                requiredVelocity = Math.min(requiredVelocity, 0);
-            }
-            
+            requiredVelocity = Math.max(requiredVelocity, -8.0);
             velocity = requiredVelocity;
 
             setTimeout(() => {
@@ -815,9 +889,6 @@
         }
 
         function drawSparrow(x, y) {
-            // Ограничиваем y для отрисовки, но физика уже ограничена
-            const clampedY = Math.min(Math.max(y, TOP_BOUNDARY), GROUND_Y - SPARROW_SIZE/2);
-            
             const wingFlap = Math.sin(wingAngle) * 12;
             
             const shadowTargetX = x - 30;
@@ -825,9 +896,9 @@
             const lerpFactor = 0.05;
             shadowX += (shadowTargetX - shadowX) * lerpFactor;
             
-            const shadowScale = 1 - (clampedY / GROUND_Y) * 0.5;
+            const shadowScale = 1 - (y / GROUND_Y) * 0.5;
             ctx.save();
-            ctx.globalAlpha = 0.2 + (1 - clampedY / GROUND_Y) * 0.15;
+            ctx.globalAlpha = 0.2 + (1 - y / GROUND_Y) * 0.15;
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.shadowColor = 'rgba(0,0,0,0)';
             ctx.shadowBlur = 0;
@@ -837,7 +908,7 @@
             ctx.restore();
             
             ctx.save();
-            ctx.translate(x, clampedY);
+            ctx.translate(x, y);
             ctx.shadowColor = 'rgba(0,0,0,0.2)';
             ctx.shadowBlur = 8;
             
@@ -981,8 +1052,8 @@
 
             drawBalloons();
 
-            const sx = 120;
-            drawSparrow(sx, sparrowY);
+            const sx = 120, sy = Math.min(sparrowY, GROUND_Y - SPARROW_SIZE/2);
+            drawSparrow(sx, sy);
 
             drawParticles();
             drawFlash();
@@ -1032,20 +1103,18 @@
 
             wingAngle += deltaSec * 8;
 
-            // Применяем гравитацию
             velocity += currentGravity;
             sparrowY += velocity;
-
-            // ЖЁСТКОЕ ОГРАНИЧЕНИЕ: воробей НЕ МОЖЕТ выйти за границы
-            if (sparrowY < TOP_BOUNDARY) {
-                sparrowY = TOP_BOUNDARY;
-                if (velocity < 0) velocity = 0;
-            }
 
             if (sparrowY + SPARROW_SIZE/2 > GROUND_Y) {
                 sparrowY = GROUND_Y - SPARROW_SIZE/2;
                 gameActive = false;
                 return;
+            }
+            
+            if (sparrowY < 10) {
+                sparrowY = 10;
+                if (velocity < 0) velocity = 0;
             }
 
             if (life <= 0) {
@@ -1101,17 +1170,25 @@
         }
 
         function gameLoop(timestamp) {
-            if (!lastTimestamp) lastTimestamp = timestamp;
-            let delta = (timestamp - lastTimestamp) / 1000;
-            if (delta > 0.1) delta = 0.1;
-            lastTimestamp = timestamp;
-
-            deltaAccumulator += delta;
-            while (deltaAccumulator >= 0.016) {
-                update(0.016);
-                deltaAccumulator -= 0.016;
+            if (!lastTimestamp) {
+                lastTimestamp = timestamp;
+                requestAnimationFrame(gameLoop);
+                return;
             }
-
+            
+            let delta = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+            
+            if (delta > 0.1) delta = 0.1;
+            if (delta < 0.001) delta = 0.001;
+            
+            deltaAccumulator += delta;
+            
+            while (deltaAccumulator >= FIXED_DELTA) {
+                update(FIXED_DELTA);
+                deltaAccumulator -= FIXED_DELTA;
+            }
+            
             draw();
             requestAnimationFrame(gameLoop);
         }
@@ -1127,6 +1204,7 @@
         restartBtn.addEventListener('click', function(){
             resetGame();
             lastTimestamp = 0;
+            deltaAccumulator = 0;
         });
 
         playBtn.addEventListener('click', function(){
