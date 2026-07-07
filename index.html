@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Воробей: тапай и считай</title>
+    <title>Воробей: шары и счёт</title>
     <style>
         * {
             margin: 0;
@@ -50,7 +50,7 @@
             border-radius: 0 0 24px 24px;
             margin-top: -4px;
             box-shadow: inset 0 4px 8px rgba(0,0,0,0.2);
-            min-height: 120px;
+            min-height: 100px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -62,41 +62,12 @@
         }
         .example-text {
             color: #f5f0d7;
-            font-size: 1.4rem;
+            font-size: 1.6rem;
             font-weight: bold;
             text-align: center;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
             letter-spacing: 0.5px;
-            min-height: 2.2rem;
-        }
-        .options-row {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            flex-wrap: wrap;
-            transition: opacity 0.3s ease;
-        }
-        .options-row.paused {
-            opacity: 0;
-            pointer-events: none;
-        }
-        .option-btn {
-            background: #d9b8c4;
-            border: none;
-            border-radius: 40px;
-            padding: 8px 24px;
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #1c2f38;
-            min-width: 70px;
-            box-shadow: 0 4px 0 #7a5f6b;
-            transition: all 0.05s ease;
-            cursor: pointer;
-            touch-action: manipulation;
-        }
-        .option-btn:active {
-            transform: translateY(4px);
-            box-shadow: 0 0 0 #7a5f6b;
+            min-height: 2.4rem;
         }
         .info-panel {
             display: flex;
@@ -225,8 +196,7 @@
         }
         @media (max-width: 440px) {
             .game-wrapper { padding: 10px; }
-            .example-text { font-size: 1.2rem; }
-            .option-btn { font-size: 1.1rem; padding: 6px 18px; min-width: 60px; }
+            .example-text { font-size: 1.3rem; }
             .info-panel { font-size: 1rem; }
             .play-btn { font-size: 1.5rem; padding: 14px 32px; }
             .game-title { font-size: 1.6rem; }
@@ -248,7 +218,7 @@
         <div class="play-overlay" id="playOverlay">
             <div class="game-title">
                 ВОРОБЕЙ-МАТЕМАТИК
-                <span>ТАПАЙ И СЧИТАЙ</span>
+                <span>ШАРЫ И СЧИТАЙ</span>
             </div>
             <button class="play-btn" id="playBtn">ИГРАТЬ</button>
             <div class="creator-credit">Created by Tudvasov</div>
@@ -256,7 +226,6 @@
     </div>
     <div class="example-area" id="exampleArea">
         <div class="example-text" id="exampleText">⏳ Ожидание примера...</div>
-        <div class="options-row" id="optionsRow"></div>
     </div>
 </div>
 <script>
@@ -266,7 +235,6 @@
         const lifeSpan = document.getElementById('lifeDisplay');
         const roundDisplay = document.getElementById('roundDisplay');
         const exampleText = document.getElementById('exampleText');
-        const optionsRow = document.getElementById('optionsRow');
         const exampleArea = document.getElementById('exampleArea');
         const playOverlay = document.getElementById('playOverlay');
         const playBtn = document.getElementById('playBtn');
@@ -275,6 +243,8 @@
         const W = 400, H = 480;
         const GROUND_Y = 440;
         const SPARROW_SIZE = 28;
+        const TOP_BOUNDARY = 15;
+        const MAX_UPWARD_SPEED = -6.0;
 
         let gameActive = false;
         let gameCompleted = false;
@@ -297,16 +267,13 @@
         let wrongPenalty = 0;
 
         let currentExample = null;
-        let exampleTimer = 0;
         let phase = 'idle';
-        let nextExampleTime = 3.0;
         let timeSinceLastExample = 0;
+        let nextExampleTime = 1.5;
+        let countdownValue = 0;
 
-        let obstacles = [];
-        const OBSTACLE_SPEED = 1.2;
-        let obstacleTimer = 0;
-        const OBSTACLE_INTERVAL_MIN = 2.0;
-        const OBSTACLE_INTERVAL_MAX = 4.5;
+        let balloons = [];
+        const BALLOON_SPEED = 1.8;
 
         let particles = [];
         let wingAngle = 0;
@@ -332,13 +299,13 @@
             timer: 0
         };
 
-        const DRONE_COLORS = [
-            { body: '#2c3e50', accent: '#34495e', light: '#e74c3c' },
-            { body: '#1a5276', accent: '#2e86c1', light: '#f1c40f' },
-            { body: '#6c3483', accent: '#8e44ad', light: '#2ecc71' },
-            { body: '#1e8449', accent: '#27ae60', light: '#e67e22' },
-            { body: '#b9770e', accent: '#d4ac0d', light: '#3498db' },
-            { body: '#922b21', accent: '#c0392b', light: '#1abc9c' }
+        const BALLOON_COLORS = [
+            { main: '#e74c3c', light: '#ff6b6b', dark: '#c0392b', string: '#7f8c8d' },
+            { main: '#3498db', light: '#5dade2', dark: '#2471a3', string: '#7f8c8d' },
+            { main: '#2ecc71', light: '#58d68d', dark: '#1e8449', string: '#7f8c8d' },
+            { main: '#f39c12', light: '#f5b041', dark: '#d4ac0d', string: '#7f8c8d' },
+            { main: '#9b59b6', light: '#af7ac5', dark: '#7d3c98', string: '#7f8c8d' },
+            { main: '#1abc9c', light: '#48c9b0', dark: '#148f77', string: '#7f8c8d' }
         ];
 
         let lastTimestamp = 0;
@@ -373,12 +340,11 @@
             currentExample = null;
             phase = 'idle';
             timeSinceLastExample = 0;
-            nextExampleTime = 3.0;
+            nextExampleTime = 1.5;
+            countdownValue = 0;
             exampleText.innerText = '⏳ Ожидание примера...';
-            optionsRow.innerHTML = '';
             
-            obstacles = [];
-            obstacleTimer = 0;
+            balloons = [];
             particles = [];
             flashEffect.active = false;
             shadowX = 120;
@@ -391,13 +357,11 @@
             gamePaused = false;
             pauseBtn.innerText = '⏸️';
             exampleArea.classList.remove('paused');
-            optionsRow.classList.remove('paused');
             life = 10;
             sparrowY = 240;
             velocity = 0;
             deltaAccumulator = 0;
-            obstacles = [];
-            obstacleTimer = 0;
+            balloons = [];
             particles = [];
             wingAngle = 0;
             flashEffect.active = false;
@@ -405,7 +369,6 @@
             setupRound(1);
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
-            optionsRow.innerHTML = '';
             playOverlay.classList.remove('hidden');
         }
 
@@ -416,12 +379,10 @@
             gamePaused = false;
             pauseBtn.innerText = '⏸️';
             exampleArea.classList.remove('paused');
-            optionsRow.classList.remove('paused');
             life = 10;
             sparrowY = 240;
             velocity = 0;
-            obstacles = [];
-            obstacleTimer = 0;
+            balloons = [];
             particles = [];
             wingAngle = 0;
             flashEffect.active = false;
@@ -429,7 +390,6 @@
             setupRound(1);
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
-            optionsRow.innerHTML = '';
             playOverlay.classList.add('hidden');
         }
 
@@ -440,42 +400,23 @@
             
             if (gamePaused) {
                 exampleArea.classList.add('paused');
-                optionsRow.classList.add('paused');
                 exampleText.innerText = '⏸️ ПАУЗА';
-                optionsRow.innerHTML = '';
             } else {
                 exampleArea.classList.remove('paused');
-                optionsRow.classList.remove('paused');
                 if (currentExample && phase === 'showing') {
                     exampleText.innerText = currentExample.text;
-                    renderOptions();
                 } else if (phase === 'waiting') {
-                    exampleText.innerText = '⏳ Следующий пример через...';
+                    const remaining = Math.ceil(nextExampleTime - timeSinceLastExample);
+                    if (remaining > 0 && remaining <= 3) {
+                        exampleText.innerText = `⏳ Следующий пример через ${remaining}...`;
+                    } else {
+                        exampleText.innerText = '⏳ Следующий пример через...';
+                    }
                 } else {
                     exampleText.innerText = '⏳ Ожидание примера...';
                 }
                 lastTimestamp = 0;
             }
-        }
-
-        function renderOptions() {
-            if (!currentExample || gamePaused) return;
-            optionsRow.innerHTML = '';
-            currentExample.options.forEach((val) => {
-                const btn = document.createElement('button');
-                btn.className = 'option-btn';
-                btn.innerText = val;
-                btn.dataset.value = val;
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    handleAnswer(val);
-                });
-                btn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    handleAnswer(val);
-                }, { passive: false });
-                optionsRow.appendChild(btn);
-            });
         }
 
         function generateExample() {
@@ -544,56 +485,68 @@
             };
         }
 
-        function renderExample() {
-            if (gamePaused) {
-                exampleText.innerText = '⏸️ ПАУЗА';
-                optionsRow.innerHTML = '';
-                return;
-            }
-            
-            if (currentExample && phase === 'showing') {
-                exampleText.innerText = currentExample.text;
-                renderOptions();
-            } else if (phase === 'waiting') {
-                exampleText.innerText = '⏳ Следующий пример через...';
-                optionsRow.innerHTML = '';
-            } else {
-                exampleText.innerText = '⏳ Ожидание примера...';
-                optionsRow.innerHTML = '';
-            }
-        }
-
         function spawnExample() {
             if (!gameActive || gameCompleted || gamePaused) return;
             currentExample = generateExample();
             phase = 'showing';
-            exampleTimer = 5.0;
-            renderExample();
+            countdownValue = 0;
+            
+            balloons = [];
+            const colors = BALLOON_COLORS.slice(0, 3);
+            
+            for (let i = colors.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [colors[i], colors[j]] = [colors[j], colors[i]];
+            }
+            
+            const startX = W + 30;
+            
+            const yPositions = [40, 195, 350];
+            
+            const shuffledPositions = [...yPositions];
+            for (let i = shuffledPositions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledPositions[i], shuffledPositions[j]] = [shuffledPositions[j], shuffledPositions[i]];
+            }
+            
+            for (let i = 0; i < 3; i++) {
+                balloons.push({
+                    x: startX,
+                    y: shuffledPositions[i] + (Math.random() - 0.5) * 15,
+                    value: currentExample.options[i],
+                    isCorrect: currentExample.options[i] === currentExample.correct,
+                    radius: 32,
+                    color: colors[i % colors.length],
+                    stringLength: 50,
+                    swingPhase: Math.random() * Math.PI * 2,
+                    scale: 1
+                });
+            }
+            
+            exampleText.innerText = currentExample.text;
         }
 
-        function handleAnswer(selectedValue) {
+        function handleBalloonCollision(balloon) {
             if (!gameActive || !currentExample || phase !== 'showing' || gameCompleted || gamePaused) return;
 
-            const isCorrect = (selectedValue === currentExample.correct);
+            const isCorrect = balloon.isCorrect;
             
             flashEffect.active = true;
             flashEffect.type = isCorrect ? 'correct' : 'wrong';
             flashEffect.alpha = 1.0;
             flashEffect.timer = 0;
 
+            createBalloonPop(balloon.x, balloon.y, balloon.color.main);
+
             if (isCorrect) {
-                life = Math.min(life + 4, 99);
+                life = Math.min(life + 5, 99);
                 updateLifeDisplay();
-                exampleText.innerText = '✅ Верно! +4 очка';
+                exampleText.innerText = '✅ Верно! +5 очков';
             } else {
                 life = Math.max(0, life - wrongPenalty);
                 updateLifeDisplay();
                 if (wrongPenalty > 0) {
-                    if (wrongPenalty === 1) {
-                        exampleText.innerText = `❌ Неверно! -1 очко`;
-                    } else {
-                        exampleText.innerText = `❌ Неверно! -${wrongPenalty} очка`;
-                    }
+                    exampleText.innerText = `❌ Неверно! -${wrongPenalty} сердечка`;
                 } else {
                     exampleText.innerText = '❌ Неверно';
                 }
@@ -603,6 +556,7 @@
                 }
             }
 
+            balloons = [];
             examplesInRound++;
             
             if (examplesInRound >= EXAMPLES_PER_ROUND) {
@@ -610,34 +564,32 @@
                     gameCompleted = true;
                     gameActive = false;
                     exampleText.innerText = '🏆 Ты настоящий Эйнштейн и Джек Воробей! 🏆';
-                    optionsRow.innerHTML = '';
                     return;
                 } else {
                     gamePaused = true;
                     pauseBtn.innerText = '▶️';
                     exampleArea.classList.add('paused');
-                    optionsRow.classList.add('paused');
                     let nextRound = round + 1;
                     let roundNames = ['', 'Первый', 'Второй', 'Третий'];
                     exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
-                    optionsRow.innerHTML = '';
                     
                     setTimeout(() => {
                         if (gameActive) {
                             gamePaused = false;
                             pauseBtn.innerText = '⏸️';
                             exampleArea.classList.remove('paused');
-                            optionsRow.classList.remove('paused');
                             setupRound(nextRound);
                             phase = 'idle';
                             timeSinceLastExample = 0;
-                            nextExampleTime = 3.0;
+                            nextExampleTime = 1.5;
+                            countdownValue = 0;
                             exampleText.innerText = `⏳ Раунд ${nextRound} начинается...`;
                             setTimeout(() => {
                                 if (gameActive && !gameCompleted) {
                                     phase = 'idle';
                                     timeSinceLastExample = 0;
-                                    nextExampleTime = 3.0;
+                                    nextExampleTime = 1.5;
+                                    countdownValue = 0;
                                     exampleText.innerText = '⏳ Ожидание примера...';
                                     lastTimestamp = 0;
                                 }
@@ -650,19 +602,38 @@
 
             phase = 'waiting';
             currentExample = null;
-            exampleTimer = 0;
             timeSinceLastExample = 0;
+            nextExampleTime = 2.0;
+            countdownValue = 0;
+            exampleText.innerText = '⏳ Следующий пример через 3...';
             setTimeout(() => {
                 if (phase === 'waiting' && !gameCompleted && !gamePaused) {
-                    renderExample();
-                }
-            }, 300);
-            setTimeout(() => {
-                if (phase === 'waiting' && !gameCompleted && !gamePaused) {
-                    exampleText.innerText = '⏳ Следующий пример через...';
-                    optionsRow.innerHTML = '';
+                    // Таймер уже обновляется в update
                 }
             }, 400);
+        }
+
+        function createBalloonPop(x, y, color) {
+            const colors = [color, '#ffffff', '#ffd700', '#ff6b6b', '#ffb8b8'];
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                const size = 3 + Math.random() * 8;
+                particles.push({
+                    x: x + (Math.random() - 0.5) * 10,
+                    y: y + (Math.random() - 0.5) * 10,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2,
+                    size: size,
+                    life: 1.0,
+                    decay: 0.01 + Math.random() * 0.02,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    type: 'balloon',
+                    rotation: Math.random() * Math.PI * 2,
+                    rotSpeed: (Math.random() - 0.5) * 0.2,
+                    gravity: 0.08 + Math.random() * 0.08
+                });
+            }
         }
 
         function updateLifeDisplay() {
@@ -672,100 +643,22 @@
             }
         }
 
-        function createParticles(x, y, type, count = 20) {
-            const colors = type === 'feather' 
-                ? ['#8b6b4d', '#b58a64', '#6f523b', '#d4a373', '#f5e6d3']
-                : ['#8b7355', '#d4a373', '#a0522d', '#ffd700', '#87CEEB'];
-            
-            for (let i = 0; i < count; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 1 + Math.random() * 4;
-                const size = 3 + Math.random() * 6;
-                particles.push({
-                    x: x + (Math.random() - 0.5) * 20,
-                    y: y + (Math.random() - 0.5) * 20,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed - 1,
-                    size: size,
-                    life: 1.0,
-                    decay: 0.008 + Math.random() * 0.015,
-                    color: colors[Math.floor(Math.random() * colors.length)],
-                    type: type,
-                    rotation: Math.random() * Math.PI * 2,
-                    rotSpeed: (Math.random() - 0.5) * 0.1,
-                    gravity: 0.05 + Math.random() * 0.05
-                });
-            }
-        }
-
-        function spawnObstacle() {
-            const type = Math.random() < 0.5 ? 'drone' : 'house';
-            const x = W + 20;
-            let y, height, width;
-            
-            if (type === 'drone') {
-                y = 25 + Math.random() * 100;
-                height = 35;
-                width = 40;
-                const colorIndex = Math.floor(Math.random() * DRONE_COLORS.length);
-                const colors = DRONE_COLORS[colorIndex];
-                obstacles.push({
-                    type: type,
-                    x: x,
-                    y: y,
-                    width: width,
-                    height: height,
-                    colors: colors,
-                    lightPhase: Math.random() * Math.PI * 2,
-                    floatOffset: Math.random() * Math.PI * 2
-                });
-            } else {
-                const floors = 5 + Math.floor(Math.random() * 5);
-                const floorHeight = 24;
-                const houseHeight = floors * floorHeight + 8;
-                const yOffset = houseHeight * 0.05;
-                y = GROUND_Y - 8 - houseHeight / 2 + yOffset;
-                height = houseHeight;
-                width = 50;
-                obstacles.push({
-                    type: type,
-                    x: x,
-                    y: y,
-                    width: width,
-                    height: height,
-                    floors: floors
-                });
-            }
-        }
-
-        function checkCollisions() {
+        function checkBalloonCollisions() {
             const sparrowLeft = 120 - SPARROW_SIZE/2 + 4;
             const sparrowRight = 120 + SPARROW_SIZE/2 - 4;
             const sparrowTop = sparrowY - SPARROW_SIZE/2 + 4;
             const sparrowBottom = sparrowY + SPARROW_SIZE/2 - 4;
 
-            for (let i = obstacles.length - 1; i >= 0; i--) {
-                const obs = obstacles[i];
-                const obsLeft = obs.x - obs.width/2;
-                const obsRight = obs.x + obs.width/2;
-                const obsY = obs.y;
-                const obsTop = obsY - obs.height/2;
-                const obsBottom = obsY + obs.height/2;
+            for (let i = balloons.length - 1; i >= 0; i--) {
+                const b = balloons[i];
+                const bLeft = b.x - b.radius;
+                const bRight = b.x + b.radius;
+                const bTop = b.y - b.radius;
+                const bBottom = b.y + b.radius;
 
-                if (sparrowLeft < obsRight && sparrowRight > obsLeft &&
-                    sparrowTop < obsBottom && sparrowBottom > obsTop) {
-                    
-                    const cx = 120;
-                    const cy = sparrowY;
-                    if (obs.type === 'drone') {
-                        createParticles(cx, cy, 'feather', 25);
-                    } else {
-                        createParticles(cx, cy, 'debris', 30);
-                    }
-                    
-                    life = 0;
-                    updateLifeDisplay();
-                    gameActive = false;
+                if (sparrowLeft < bRight && sparrowRight > bLeft &&
+                    sparrowTop < bBottom && sparrowBottom > bTop) {
+                    handleBalloonCollision(b);
                     return true;
                 }
             }
@@ -788,11 +681,22 @@
                 return;
             }
             
+            // Расчёт прыжка
             const targetY = sparrowY - JUMP_HEIGHT;
-            const clampedTarget = Math.max(15, targetY);
+            const clampedTarget = Math.max(TOP_BOUNDARY, targetY);
             const distance = sparrowY - clampedTarget;
             let requiredVelocity = -Math.sqrt(2 * currentGravity * distance) * 1.15;
-            requiredVelocity = Math.max(requiredVelocity, -8.0);
+            
+            // Жёсткое ограничение скорости вверх
+            if (requiredVelocity < MAX_UPWARD_SPEED) {
+                requiredVelocity = MAX_UPWARD_SPEED;
+            }
+            
+            // Если воробей уже у верхней границы, не даём ему улететь выше
+            if (sparrowY <= TOP_BOUNDARY + 2) {
+                requiredVelocity = Math.min(requiredVelocity, 0);
+            }
+            
             velocity = requiredVelocity;
 
             setTimeout(() => {
@@ -812,7 +716,6 @@
         }
 
         function drawClouds() {
-            const time = Date.now() / 30000;
             for (let cloud of clouds) {
                 cloud.x += cloud.speed * 0.3;
                 if (cloud.x > W + cloud.w) {
@@ -822,7 +725,6 @@
                 
                 ctx.save();
                 ctx.globalAlpha = cloud.opacity;
-                
                 const cx = cloud.x;
                 const cy = cloud.y;
                 const w = cloud.w;
@@ -851,7 +753,71 @@
             }
         }
 
+        function drawBalloons() {
+            const time = Date.now() / 1000;
+            
+            for (let b of balloons) {
+                b.x -= BALLOON_SPEED;
+                b.swingPhase += 0.03;
+                const swing = Math.sin(b.swingPhase) * 2;
+                
+                ctx.save();
+                ctx.translate(b.x, b.y + swing);
+                
+                ctx.strokeStyle = b.color.string;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([3, 5]);
+                ctx.beginPath();
+                ctx.moveTo(0, b.radius);
+                ctx.quadraticCurveTo(8, b.radius + b.stringLength * 0.6, 4, b.radius + b.stringLength);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                const grad = ctx.createRadialGradient(-8, -8, 5, 0, 0, b.radius);
+                grad.addColorStop(0, b.color.light);
+                grad.addColorStop(0.7, b.color.main);
+                grad.addColorStop(1, b.color.dark);
+                
+                ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                ctx.shadowBlur = 12;
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 0.4;
+                ctx.beginPath();
+                ctx.ellipse(-8, -10, 8, 5, -0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                
+                ctx.globalAlpha = 0.15;
+                ctx.beginPath();
+                ctx.ellipse(-4, -6, 4, 3, -0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                
+                ctx.globalAlpha = 1.0;
+                ctx.shadowBlur = 0;
+                
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 20px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.3)';
+                ctx.shadowBlur = 4;
+                ctx.fillText(b.value, 0, 2);
+                
+                ctx.restore();
+            }
+        }
+
         function drawSparrow(x, y) {
+            // Ограничиваем y для отрисовки, но физика уже ограничена
+            const clampedY = Math.min(Math.max(y, TOP_BOUNDARY), GROUND_Y - SPARROW_SIZE/2);
+            
             const wingFlap = Math.sin(wingAngle) * 12;
             
             const shadowTargetX = x - 30;
@@ -859,9 +825,9 @@
             const lerpFactor = 0.05;
             shadowX += (shadowTargetX - shadowX) * lerpFactor;
             
-            const shadowScale = 1 - (y / GROUND_Y) * 0.5;
+            const shadowScale = 1 - (clampedY / GROUND_Y) * 0.5;
             ctx.save();
-            ctx.globalAlpha = 0.2 + (1 - y / GROUND_Y) * 0.15;
+            ctx.globalAlpha = 0.2 + (1 - clampedY / GROUND_Y) * 0.15;
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.shadowColor = 'rgba(0,0,0,0)';
             ctx.shadowBlur = 0;
@@ -871,7 +837,7 @@
             ctx.restore();
             
             ctx.save();
-            ctx.translate(x, y);
+            ctx.translate(x, clampedY);
             ctx.shadowColor = 'rgba(0,0,0,0.2)';
             ctx.shadowBlur = 8;
             
@@ -936,202 +902,6 @@
             ctx.restore();
         }
 
-        function drawDrone(obs) {
-            const colors = obs.colors || DRONE_COLORS[0];
-            const time = Date.now() / 200;
-            
-            const floatOffset = obs.floatOffset || 0;
-            const bobY = Math.sin(time * 0.5 + floatOffset) * 3;
-            const tilt = Math.sin(time * 0.3 + floatOffset * 1.5) * 0.04;
-            
-            ctx.save();
-            ctx.translate(obs.x, obs.y + bobY);
-            ctx.rotate(tilt);
-            
-            ctx.fillStyle = colors.body;
-            ctx.shadowColor = 'rgba(0,0,0,0.3)';
-            ctx.shadowBlur = 6;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI*2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#1a1a2e';
-            ctx.shadowBlur = 0;
-            ctx.fillRect(-4, 6, 8, 5);
-            ctx.fillStyle = '#4a6fa5';
-            ctx.fillRect(-2, 7, 4, 3);
-            
-            ctx.strokeStyle = colors.accent;
-            ctx.lineWidth = 3;
-            ctx.shadowBlur = 4;
-            
-            ctx.beginPath();
-            ctx.moveTo(-10, -4);
-            ctx.lineTo(-18, -14);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(10, -4);
-            ctx.lineTo(18, -14);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(-10, 4);
-            ctx.lineTo(-18, 14);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(10, 4);
-            ctx.lineTo(18, 14);
-            ctx.stroke();
-            
-            ctx.fillStyle = colors.body;
-            ctx.shadowBlur = 6;
-            ctx.beginPath();
-            ctx.arc(-18, -14, 5, 0, Math.PI*2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(18, -14, 5, 0, Math.PI*2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(-18, 14, 5, 0, Math.PI*2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(18, 14, 5, 0, Math.PI*2);
-            ctx.fill();
-            
-            ctx.strokeStyle = 'rgba(200, 200, 200, 0.7)';
-            ctx.lineWidth = 2;
-            ctx.shadowBlur = 0;
-            
-            ctx.save();
-            ctx.translate(-18, -14);
-            ctx.rotate(time);
-            ctx.beginPath();
-            ctx.moveTo(-8, 0);
-            ctx.lineTo(8, 0);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, -8);
-            ctx.lineTo(0, 8);
-            ctx.stroke();
-            ctx.restore();
-            
-            ctx.save();
-            ctx.translate(18, -14);
-            ctx.rotate(time + 0.5);
-            ctx.beginPath();
-            ctx.moveTo(-8, 0);
-            ctx.lineTo(8, 0);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, -8);
-            ctx.lineTo(0, 8);
-            ctx.stroke();
-            ctx.restore();
-            
-            ctx.save();
-            ctx.translate(-18, 14);
-            ctx.rotate(time + 1.0);
-            ctx.beginPath();
-            ctx.moveTo(-8, 0);
-            ctx.lineTo(8, 0);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, -8);
-            ctx.lineTo(0, 8);
-            ctx.stroke();
-            ctx.restore();
-            
-            ctx.save();
-            ctx.translate(18, 14);
-            ctx.rotate(time + 1.5);
-            ctx.beginPath();
-            ctx.moveTo(-8, 0);
-            ctx.lineTo(8, 0);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(0, -8);
-            ctx.lineTo(0, 8);
-            ctx.stroke();
-            ctx.restore();
-            
-            ctx.shadowBlur = 0;
-            const blink1 = Math.sin(time * 1.5 + obs.lightPhase);
-            const brightness1 = 0.3 + 0.7 * (blink1 * 0.5 + 0.5);
-            ctx.globalAlpha = 0.3 + 0.7 * brightness1;
-            ctx.fillStyle = '#ff0000';
-            ctx.shadowColor = '#ff0000';
-            ctx.shadowBlur = 8;
-            ctx.beginPath();
-            ctx.arc(0, -10, 2.5, 0, Math.PI*2);
-            ctx.fill();
-            
-            const blink2 = Math.sin(time * 1.5 + obs.lightPhase + Math.PI);
-            const brightness2 = 0.3 + 0.7 * (blink2 * 0.5 + 0.5);
-            ctx.globalAlpha = 0.3 + 0.7 * brightness2;
-            ctx.fillStyle = '#00ff00';
-            ctx.shadowColor = '#00ff00';
-            ctx.shadowBlur = 8;
-            ctx.beginPath();
-            ctx.arc(0, 10, 2.5, 0, Math.PI*2);
-            ctx.fill();
-            
-            ctx.globalAlpha = 1.0;
-            ctx.shadowBlur = 0;
-            ctx.restore();
-        }
-
-        function drawHouse(obs) {
-            const houseHeight = obs.height;
-            const topY = -houseHeight/2;
-            const bottomY = houseHeight/2;
-            const floors = obs.floors || 8;
-            const floorHeight = 24;
-            
-            ctx.save();
-            ctx.translate(obs.x, obs.y);
-            
-            ctx.fillStyle = '#8b7355';
-            ctx.fillRect(-28, bottomY - 6, 56, 6);
-            
-            ctx.fillStyle = '#d4a373';
-            ctx.fillRect(-24, topY, 48, houseHeight);
-            ctx.strokeStyle = '#8b6b4d';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(-24, topY, 48, houseHeight);
-            
-            ctx.fillStyle = '#8b7355';
-            ctx.fillRect(-26, topY - 2, 52, 6);
-            ctx.strokeStyle = '#6b5a45';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(-26, topY - 2, 52, 6);
-            
-            ctx.fillStyle = '#ffd700';
-            ctx.shadowColor = '#ffd700';
-            ctx.shadowBlur = 4;
-            const startY = topY + floorHeight;
-            for (let f = 0; f < floors - 1; f++) {
-                const yPos = startY + f * floorHeight;
-                ctx.fillRect(-16, yPos, 10, 10);
-                ctx.fillRect(6, yPos, 10, 10);
-                ctx.strokeStyle = '#5a3e2b';
-                ctx.lineWidth = 1;
-                ctx.shadowBlur = 0;
-                ctx.strokeRect(-16, yPos, 10, 10);
-                ctx.strokeRect(6, yPos, 10, 10);
-                ctx.shadowBlur = 4;
-            }
-            ctx.shadowBlur = 0;
-            
-            ctx.fillStyle = '#5a3e2b';
-            ctx.fillRect(-6, bottomY - 8, 12, 8);
-            ctx.fillStyle = '#d4a373';
-            ctx.fillRect(-3, bottomY - 6, 3, 4);
-            
-            ctx.restore();
-        }
-
         function drawParticles() {
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
@@ -1151,31 +921,25 @@
                 ctx.translate(p.x, p.y);
                 ctx.rotate(p.rotation);
                 
-                if (p.type === 'feather') {
+                if (p.type === 'balloon') {
                     ctx.fillStyle = p.color;
                     ctx.shadowColor = 'rgba(0,0,0,0.2)';
                     ctx.shadowBlur = 4;
+                    const s = p.size;
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, p.size * 0.6, p.size * 0.3, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, 0, s * 0.6, s * 0.8, 0, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.strokeStyle = p.color;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
                     ctx.lineWidth = 1;
-                    for (let j = 0; j < 3; j++) {
-                        const angle = (j / 3) * Math.PI - Math.PI/2;
-                        ctx.beginPath();
-                        ctx.moveTo(0, 0);
-                        ctx.lineTo(Math.cos(angle) * p.size * 0.4, Math.sin(angle) * p.size * 0.3);
-                        ctx.stroke();
-                    }
+                    ctx.stroke();
                 } else {
                     ctx.fillStyle = p.color;
                     ctx.shadowColor = 'rgba(0,0,0,0.2)';
                     ctx.shadowBlur = 4;
-                    const size = p.size * 0.5;
-                    ctx.fillRect(-size/2, -size/2, size, size);
-                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-                    ctx.lineWidth = 0.5;
-                    ctx.strokeRect(-size/2, -size/2, size, size);
+                    const s = p.size * 0.5;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, s, s * 0.4, 0, 0, Math.PI * 2);
+                    ctx.fill();
                 }
                 
                 ctx.restore();
@@ -1207,7 +971,6 @@
 
         function draw() {
             ctx.clearRect(0, 0, W, H);
-
             drawSky();
             drawClouds();
 
@@ -1216,16 +979,10 @@
             ctx.fillStyle = '#7daa6a';
             ctx.fillRect(0, GROUND_Y-4, W, 8);
 
-            for (let obs of obstacles) {
-                if (obs.type === 'drone') {
-                    drawDrone(obs);
-                } else {
-                    drawHouse(obs);
-                }
-            }
+            drawBalloons();
 
-            const sx = 120, sy = Math.min(sparrowY, GROUND_Y - SPARROW_SIZE/2);
-            drawSparrow(sx, sy);
+            const sx = 120;
+            drawSparrow(sx, sparrowY);
 
             drawParticles();
             drawFlash();
@@ -1252,7 +1009,7 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillText('💥', 200, 170);
                 ctx.font = 'bold 26px sans-serif';
-                ctx.fillText('Воробей разбился!', 200, 250);
+                ctx.fillText('Воробей погиб!', 200, 250);
                 ctx.font = '20px sans-serif';
                 ctx.fillText('Нажмите ↺ чтобы начать', 200, 320);
             } else if (!gameActive && sparrowY + SPARROW_SIZE/2 >= GROUND_Y && gameStarted) {
@@ -1275,18 +1032,20 @@
 
             wingAngle += deltaSec * 8;
 
+            // Применяем гравитацию
             velocity += currentGravity;
             sparrowY += velocity;
+
+            // ЖЁСТКОЕ ОГРАНИЧЕНИЕ: воробей НЕ МОЖЕТ выйти за границы
+            if (sparrowY < TOP_BOUNDARY) {
+                sparrowY = TOP_BOUNDARY;
+                if (velocity < 0) velocity = 0;
+            }
 
             if (sparrowY + SPARROW_SIZE/2 > GROUND_Y) {
                 sparrowY = GROUND_Y - SPARROW_SIZE/2;
                 gameActive = false;
                 return;
-            }
-            
-            if (sparrowY < 10) {
-                sparrowY = 10;
-                if (velocity < 0) velocity = 0;
             }
 
             if (life <= 0) {
@@ -1295,20 +1054,22 @@
                 return;
             }
 
-            obstacleTimer -= deltaSec;
-            if (obstacleTimer <= 0) {
-                spawnObstacle();
-                obstacleTimer = OBSTACLE_INTERVAL_MIN + Math.random() * (OBSTACLE_INTERVAL_MAX - OBSTACLE_INTERVAL_MIN);
-            }
+            checkBalloonCollisions();
 
-            for (let i = obstacles.length - 1; i >= 0; i--) {
-                obstacles[i].x -= OBSTACLE_SPEED;
-                if (obstacles[i].x < -50) {
-                    obstacles.splice(i, 1);
+            for (let i = balloons.length - 1; i >= 0; i--) {
+                if (balloons[i].x < -50) {
+                    balloons.splice(i, 1);
                 }
             }
 
-            checkCollisions();
+            if (phase === 'showing' && balloons.length === 0 && currentExample) {
+                phase = 'waiting';
+                currentExample = null;
+                timeSinceLastExample = 0;
+                nextExampleTime = 2.0;
+                countdownValue = 3;
+                exampleText.innerText = '⏳ Следующий пример через 3...';
+            }
 
             if (phase === 'idle') {
                 timeSinceLastExample += deltaSec;
@@ -1317,26 +1078,22 @@
                     timeSinceLastExample = 0;
                     nextExampleTime = 999;
                 }
-            } else if (phase === 'showing') {
-                exampleTimer -= deltaSec;
-                if (exampleTimer <= 0) {
-                    phase = 'waiting';
-                    currentExample = null;
-                    exampleTimer = 0;
-                    timeSinceLastExample = 0;
-                    exampleText.innerText = '⏳ Время вышло!';
-                    optionsRow.innerHTML = '';
-                    setTimeout(() => {
-                        if (phase === 'waiting' && !gameCompleted && !gamePaused) {
-                            exampleText.innerText = '⏳ Следующий пример через...';
-                        }
-                    }, 400);
-                }
             } else if (phase === 'waiting') {
                 timeSinceLastExample += deltaSec;
-                if (timeSinceLastExample >= 2.0) {
+                const remaining = Math.ceil(nextExampleTime - timeSinceLastExample);
+                
+                if (remaining >= 1 && remaining <= 3) {
+                    const newValue = remaining;
+                    if (newValue !== countdownValue) {
+                        countdownValue = newValue;
+                        exampleText.innerText = `⏳ Следующий пример через ${countdownValue}...`;
+                    }
+                }
+                
+                if (timeSinceLastExample >= nextExampleTime) {
                     spawnExample();
                     timeSinceLastExample = 0;
+                    countdownValue = 0;
                 }
             }
 
