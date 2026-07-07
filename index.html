@@ -3,15 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Воробей-математик</title>
-    
-    <!-- Мета-теги для Telegram Mini App -->
-    <meta name="telegram:mini-app" content="true">
-    <meta name="telegram:mini-app-url" content="https://ваш-username.github.io/воробей-математик/">
-    
-    <!-- Основные стили -->
+    <title>Воробей-математик 2.0</title>
     <style>
-        /* ... все стили остаются без изменений ... */
         * {
             margin: 0;
             padding: 0;
@@ -27,7 +20,6 @@
             min-height: 100vh;
             font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
             touch-action: manipulation;
-            overflow: hidden;
         }
         .game-wrapper {
             background: #7ec8e0;
@@ -173,6 +165,18 @@
             margin-top: 4px;
             letter-spacing: 6px;
         }
+        .version-badge {
+            display: inline-block;
+            background: rgba(255, 215, 0, 0.3);
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #f5f0d7;
+            letter-spacing: 2px;
+            margin-top: 2px;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+        }
         .play-btn {
             background: linear-gradient(145deg, #f7d94e, #f0b830);
             border: none;
@@ -227,6 +231,7 @@
             <div class="game-title">
                 ВОРОБЕЙ-МАТЕМАТИК
                 <span>ШАРЫ И СЧИТАЙ</span>
+                <span class="version-badge">✦ ВЕРСИЯ 2.0 ✦</span>
             </div>
             <button class="play-btn" id="playBtn">ИГРАТЬ</button>
             <div class="creator-credit">Created by Tudvasov</div>
@@ -236,23 +241,9 @@
         <div class="example-text" id="exampleText">⏳ Ожидание примера...</div>
     </div>
 </div>
-
-<!-- Подключение Telegram WebApp SDK -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-
 <script>
     (function(){
-        // Инициализация Telegram WebApp
-        let tg = null;
-        try {
-            tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand(); // Разворачивает на весь экран
-            console.log('Telegram WebApp initialized');
-        } catch(e) {
-            console.log('Not running in Telegram');
-        }
-
+        // --- DOM references ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const lifeSpan = document.getElementById('lifeDisplay');
@@ -262,11 +253,20 @@
         const playOverlay = document.getElementById('playOverlay');
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
+        const restartBtn = document.getElementById('restartBtn');
 
+        // --- Constants ---
         const W = 400, H = 480;
         const GROUND_Y = 440;
         const SPARROW_SIZE = 28;
+        const TOP_BOUNDARY = 15;
+        const MAX_UPWARD_SPEED = -6.0;
+        const BASE_GRAVITY = 0.0875;
+        const JUMP_HEIGHT = 80;
+        const EXAMPLES_PER_ROUND = 10;
+        const BALLOON_SPEED = 1.8;
 
+        // --- Game state ---
         let gameActive = false;
         let gameCompleted = false;
         let gameStarted = false;
@@ -274,52 +274,37 @@
         let life = 10;
         let sparrowY = 240;
         let velocity = 0;
-        
         let round = 1;
         let examplesInRound = 0;
-        const EXAMPLES_PER_ROUND = 10;
-        
-        const BASE_GRAVITY = 0.0875;
         let currentGravity = BASE_GRAVITY;
-        const JUMP_HEIGHT = 80;
-        
         let minNumber = 0;
         let maxNumber = 20;
         let wrongPenalty = 0;
-
         let currentExample = null;
         let phase = 'idle';
         let timeSinceLastExample = 0;
         let nextExampleTime = 1.5;
         let countdownValue = 0;
-
         let balloons = [];
-        const BALLOON_SPEED = 1.8;
-
         let particles = [];
         let wingAngle = 0;
-
-        let clouds = [];
-        for (let i = 0; i < 6; i++) {
-            clouds.push({
-                x: Math.random() * W,
-                y: 20 + Math.random() * 120,
-                w: 60 + Math.random() * 80,
-                h: 20 + Math.random() * 20,
-                speed: 0.1 + Math.random() * 0.2,
-                opacity: 0.2 + Math.random() * 0.3
-            });
-        }
-
+        let flashEffect = { active: false, type: '', alpha: 0, timer: 0 };
         let shadowX = 120;
+        let isTapProcessing = false;
+        let lastTimestamp = 0;
+        let deltaAccumulator = 0;
 
-        let flashEffect = {
-            active: false,
-            type: '',
-            alpha: 0,
-            timer: 0
-        };
+        // --- Clouds ---
+        const clouds = Array.from({ length: 6 }, () => ({
+            x: Math.random() * W,
+            y: 20 + Math.random() * 120,
+            w: 60 + Math.random() * 80,
+            h: 20 + Math.random() * 20,
+            speed: 0.1 + Math.random() * 0.2,
+            opacity: 0.2 + Math.random() * 0.3
+        }));
 
+        // --- Balloon colors ---
         const BALLOON_COLORS = [
             { main: '#e74c3c', light: '#ff6b6b', dark: '#c0392b', string: '#7f8c8d' },
             { main: '#3498db', light: '#5dade2', dark: '#2471a3', string: '#7f8c8d' },
@@ -329,16 +314,10 @@
             { main: '#1abc9c', light: '#48c9b0', dark: '#148f77', string: '#7f8c8d' }
         ];
 
-        let lastTimestamp = 0;
-        let deltaAccumulator = 0;
-        const FIXED_DELTA = 1/60;
-
-        const restartBtn = document.getElementById('restartBtn');
-
+        // --- Round setup ---
         function setupRound(roundNum) {
             round = roundNum;
             examplesInRound = 0;
-            
             if (round === 1) {
                 currentGravity = BASE_GRAVITY;
                 minNumber = 0;
@@ -358,14 +337,12 @@
                 wrongPenalty = 2;
                 roundDisplay.innerText = 'Раунд 3';
             }
-            
             currentExample = null;
             phase = 'idle';
             timeSinceLastExample = 0;
             nextExampleTime = 1.5;
             countdownValue = 0;
             exampleText.innerText = '⏳ Ожидание примера...';
-            
             balloons = [];
             particles = [];
             flashEffect.active = false;
@@ -392,16 +369,6 @@
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
             playOverlay.classList.remove('hidden');
-            
-            // Обновляем Telegram WebApp при рестарте
-            if (tg) {
-                try {
-                    tg.sendData(JSON.stringify({
-                        event: 'restart',
-                        score: 0
-                    }));
-                } catch(e) {}
-            }
         }
 
         function startGame() {
@@ -423,25 +390,12 @@
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
             playOverlay.classList.add('hidden');
-            lastTimestamp = 0;
-            deltaAccumulator = 0;
-            
-            // Обновляем Telegram WebApp
-            if (tg) {
-                try {
-                    tg.sendData(JSON.stringify({
-                        event: 'start',
-                        score: 0
-                    }));
-                } catch(e) {}
-            }
         }
 
         function togglePause() {
             if (!gameActive || gameCompleted) return;
             gamePaused = !gamePaused;
             pauseBtn.innerText = gamePaused ? '▶️' : '⏸️';
-            
             if (gamePaused) {
                 exampleArea.classList.add('paused');
                 exampleText.innerText = '⏸️ ПАУЗА';
@@ -463,37 +417,33 @@
             }
         }
 
+        // --- Example generation ---
         function generateExample() {
-            let a, b, isAdd, correct, text;
             const minVal = minNumber;
             const maxVal = maxNumber;
-            
-            isAdd = Math.random() < 0.5;
+            const isAdd = Math.random() < 0.5;
+            let a, b, correct, text;
+
             if (isAdd) {
-                a = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                b = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                while (a + b > maxVal) {
+                do {
                     a = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
                     b = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                }
+                } while (a + b > maxVal);
                 correct = a + b;
                 text = `${a} + ${b} = ?`;
             } else {
-                a = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                b = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                while (a - b < 0 || a > maxVal || b > maxVal) {
+                do {
                     a = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
                     b = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
-                }
+                } while (a - b < 0 || a > maxVal || b > maxVal);
                 correct = a - b;
                 text = `${a} – ${b} = ?`;
             }
 
-            let options = new Set();
-            options.add(correct);
+            const options = new Set([correct]);
             let attempts = 0;
             while (options.size < 3 && attempts < 1000) {
-                let offset = Math.floor(Math.random() * 11) - 5;
+                const offset = Math.floor(Math.random() * 11) - 5;
                 let fake = correct + offset;
                 if (fake < minVal) fake = Math.floor(Math.random() * 10) + minVal;
                 if (fake > maxVal) fake = maxVal - Math.floor(Math.random() * 10);
@@ -501,32 +451,25 @@
                     options.add(fake);
                 }
                 attempts++;
-                if (attempts > 500) {
-                    let fallback = [correct+1, correct-1, correct+2, correct-2];
-                    for (let v of fallback) {
-                        if (v >= minVal && v <= maxVal && v !== correct && options.size < 3) {
-                            options.add(v);
-                        }
-                    }
-                    break;
+            }
+            const fallback = [correct+1, correct-1, correct+2, correct-2];
+            for (const v of fallback) {
+                if (v >= minVal && v <= maxVal && v !== correct && options.size < 3) {
+                    options.add(v);
                 }
             }
             while (options.size < 3) {
-                let extra = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
+                const extra = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
                 if (!options.has(extra)) options.add(extra);
             }
 
-            let optArr = Array.from(options);
+            const optArr = Array.from(options);
             for (let i = optArr.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [optArr[i], optArr[j]] = [optArr[j], optArr[i]];
             }
 
-            return {
-                text: text,
-                correct: correct,
-                options: optArr
-            };
+            return { text, correct, options: optArr };
         }
 
         function spawnExample() {
@@ -534,28 +477,15 @@
             currentExample = generateExample();
             phase = 'showing';
             countdownValue = 0;
-            
             balloons = [];
-            const colors = BALLOON_COLORS.slice(0, 3);
-            
-            for (let i = colors.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [colors[i], colors[j]] = [colors[j], colors[i]];
-            }
-            
-            const startX = W + 30;
-            
+
+            const colors = [...BALLOON_COLORS].sort(() => Math.random() - 0.5).slice(0, 3);
             const yPositions = [40, 195, 350];
-            
-            const shuffledPositions = [...yPositions];
-            for (let i = shuffledPositions.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffledPositions[i], shuffledPositions[j]] = [shuffledPositions[j], shuffledPositions[i]];
-            }
-            
+            const shuffledPositions = [...yPositions].sort(() => Math.random() - 0.5);
+
             for (let i = 0; i < 3; i++) {
                 balloons.push({
-                    x: startX,
+                    x: W + 30,
                     y: shuffledPositions[i] + (Math.random() - 0.5) * 15,
                     value: currentExample.options[i],
                     isCorrect: currentExample.options[i] === currentExample.correct,
@@ -566,128 +496,75 @@
                     scale: 1
                 });
             }
-            
             exampleText.innerText = currentExample.text;
         }
 
+        // --- Collision handling ---
         function handleBalloonCollision(balloon) {
             if (!gameActive || !currentExample || phase !== 'showing' || gameCompleted || gamePaused) return;
 
             const isCorrect = balloon.isCorrect;
-            
             flashEffect.active = true;
             flashEffect.type = isCorrect ? 'correct' : 'wrong';
             flashEffect.alpha = 1.0;
             flashEffect.timer = 0;
-
             createBalloonPop(balloon.x, balloon.y, balloon.color.main);
 
             if (isCorrect) {
                 life = Math.min(life + 5, 99);
                 updateLifeDisplay();
                 exampleText.innerText = '✅ Верно! +5 очков';
-                
-                // Отправляем событие в Telegram
-                if (tg) {
-                    try {
-                        tg.sendData(JSON.stringify({
-                            event: 'correct',
-                            life: Math.floor(life),
-                            round: round
-                        }));
-                    } catch(e) {}
-                }
             } else {
                 life = Math.max(0, life - wrongPenalty);
                 updateLifeDisplay();
-                if (wrongPenalty > 0) {
-                    exampleText.innerText = `❌ Неверно! -${wrongPenalty} сердечка`;
-                } else {
-                    exampleText.innerText = '❌ Неверно';
-                }
+                exampleText.innerText = wrongPenalty > 0 ? `❌ Неверно! -${wrongPenalty} сердечка` : '❌ Неверно';
                 if (life <= 0) {
                     gameActive = false;
-                    
-                    // Отправляем событие окончания игры в Telegram
-                    if (tg) {
-                        try {
-                            tg.sendData(JSON.stringify({
-                                event: 'game_over',
-                                life: 0,
-                                round: round,
-                                score: Math.floor(life)
-                            }));
-                        } catch(e) {}
-                    }
                     return;
                 }
             }
 
             balloons = [];
             examplesInRound++;
-            
+
             if (examplesInRound >= EXAMPLES_PER_ROUND) {
                 if (round === 3) {
                     gameCompleted = true;
                     gameActive = false;
                     exampleText.innerText = '🏆 Ты настоящий Эйнштейн и Джек Воробей! 🏆';
-                    
-                    // Отправляем событие победы в Telegram
-                    if (tg) {
-                        try {
-                            tg.sendData(JSON.stringify({
-                                event: 'victory',
-                                life: Math.floor(life),
-                                round: round
-                            }));
-                        } catch(e) {}
-                    }
-                    return;
-                } else {
-                    gamePaused = true;
-                    pauseBtn.innerText = '▶️';
-                    exampleArea.classList.add('paused');
-                    let nextRound = round + 1;
-                    let roundNames = ['', 'Первый', 'Второй', 'Третий'];
-                    exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
-                    
-                    // Отправляем событие завершения раунда в Telegram
-                    if (tg) {
-                        try {
-                            tg.sendData(JSON.stringify({
-                                event: 'round_complete',
-                                round: round,
-                                life: Math.floor(life)
-                            }));
-                        } catch(e) {}
-                    }
-                    
-                    setTimeout(() => {
-                        if (gameActive) {
-                            gamePaused = false;
-                            pauseBtn.innerText = '⏸️';
-                            exampleArea.classList.remove('paused');
-                            setupRound(nextRound);
-                            phase = 'idle';
-                            timeSinceLastExample = 0;
-                            nextExampleTime = 1.5;
-                            countdownValue = 0;
-                            exampleText.innerText = `⏳ Раунд ${nextRound} начинается...`;
-                            setTimeout(() => {
-                                if (gameActive && !gameCompleted) {
-                                    phase = 'idle';
-                                    timeSinceLastExample = 0;
-                                    nextExampleTime = 1.5;
-                                    countdownValue = 0;
-                                    exampleText.innerText = '⏳ Ожидание примера...';
-                                    lastTimestamp = 0;
-                                    deltaAccumulator = 0;
-                                }
-                            }, 2000);
-                        }
-                    }, 3000);
                     return;
                 }
+                gamePaused = true;
+                pauseBtn.innerText = '▶️';
+                exampleArea.classList.add('paused');
+                const nextRound = round + 1;
+                const roundNames = ['', 'Первый', 'Второй', 'Третий'];
+                exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
+
+                setTimeout(() => {
+                    if (gameActive) {
+                        gamePaused = false;
+                        pauseBtn.innerText = '⏸️';
+                        exampleArea.classList.remove('paused');
+                        setupRound(nextRound);
+                        phase = 'idle';
+                        timeSinceLastExample = 0;
+                        nextExampleTime = 1.5;
+                        countdownValue = 0;
+                        exampleText.innerText = `⏳ Раунд ${nextRound} начинается...`;
+                        setTimeout(() => {
+                            if (gameActive && !gameCompleted) {
+                                phase = 'idle';
+                                timeSinceLastExample = 0;
+                                nextExampleTime = 1.5;
+                                countdownValue = 0;
+                                exampleText.innerText = '⏳ Ожидание примера...';
+                                lastTimestamp = 0;
+                            }
+                        }, 2000);
+                    }
+                }, 3000);
+                return;
             }
 
             phase = 'waiting';
@@ -709,7 +586,7 @@
                     y: y + (Math.random() - 0.5) * 10,
                     vx: Math.cos(angle) * speed,
                     vy: Math.sin(angle) * speed - 2,
-                    size: size,
+                    size,
                     life: 1.0,
                     decay: 0.01 + Math.random() * 0.02,
                     color: colors[Math.floor(Math.random() * colors.length)],
@@ -722,10 +599,7 @@
         }
 
         function updateLifeDisplay() {
-            lifeSpan.innerText = `❤️ ${Math.floor(life)}`;
-            if (life <= 0) {
-                lifeSpan.innerText = '💀 0';
-            }
+            lifeSpan.innerText = life <= 0 ? '💀 0' : `❤️ ${Math.floor(life)}`;
         }
 
         function checkBalloonCollisions() {
@@ -750,14 +624,12 @@
             return false;
         }
 
-        let isTapProcessing = false;
-
+        // --- Input ---
         function handleTap(e) {
             e.preventDefault();
             if (!gameActive || gameCompleted || gamePaused || isTapProcessing) return;
-
             isTapProcessing = true;
-            
+
             life = Math.max(0, life - 1);
             updateLifeDisplay();
             if (life <= 0) {
@@ -765,19 +637,21 @@
                 isTapProcessing = false;
                 return;
             }
-            
+
             const targetY = sparrowY - JUMP_HEIGHT;
-            const clampedTarget = Math.max(15, targetY);
+            const clampedTarget = Math.max(TOP_BOUNDARY, targetY);
             const distance = sparrowY - clampedTarget;
             let requiredVelocity = -Math.sqrt(2 * currentGravity * distance) * 1.15;
-            requiredVelocity = Math.max(requiredVelocity, -8.0);
+            if (requiredVelocity < MAX_UPWARD_SPEED) requiredVelocity = MAX_UPWARD_SPEED;
+            if (sparrowY <= TOP_BOUNDARY + 2) {
+                requiredVelocity = Math.min(requiredVelocity, 0);
+            }
             velocity = requiredVelocity;
 
-            setTimeout(() => {
-                isTapProcessing = false;
-            }, 50);
+            setTimeout(() => { isTapProcessing = false; }, 50);
         }
 
+        // --- Drawing functions ---
         function drawSky() {
             const gradient = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
             gradient.addColorStop(0, '#4a90d9');
@@ -790,24 +664,18 @@
         }
 
         function drawClouds() {
-            for (let cloud of clouds) {
+            for (const cloud of clouds) {
                 cloud.x += cloud.speed * 0.3;
                 if (cloud.x > W + cloud.w) {
                     cloud.x = -cloud.w;
                     cloud.y = 20 + Math.random() * 120;
                 }
-                
                 ctx.save();
                 ctx.globalAlpha = cloud.opacity;
-                const cx = cloud.x;
-                const cy = cloud.y;
-                const w = cloud.w;
-                const h = cloud.h;
-                
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.shadowColor = 'rgba(255, 255, 255, 0.1)';
                 ctx.shadowBlur = 20;
-                
+                const { x, y, w, h } = cloud;
                 const circles = [
                     { dx: 0, dy: 0, r: h * 0.7 },
                     { dx: -w * 0.3, dy: h * 0.1, r: h * 0.6 },
@@ -816,28 +684,25 @@
                     { dx: w * 0.5, dy: h * 0.3, r: h * 0.4 },
                     { dx: 0, dy: -h * 0.2, r: h * 0.5 }
                 ];
-                
-                for (let c of circles) {
+                for (const c of circles) {
                     ctx.beginPath();
-                    ctx.arc(cx + c.dx, cy + c.dy, c.r, 0, Math.PI * 2);
+                    ctx.arc(x + c.dx, y + c.dy, c.r, 0, Math.PI * 2);
                     ctx.fill();
                 }
-                
                 ctx.restore();
             }
         }
 
         function drawBalloons() {
-            const time = Date.now() / 1000;
-            
-            for (let b of balloons) {
+            for (const b of balloons) {
                 b.x -= BALLOON_SPEED;
                 b.swingPhase += 0.03;
                 const swing = Math.sin(b.swingPhase) * 2;
-                
+
                 ctx.save();
                 ctx.translate(b.x, b.y + swing);
-                
+
+                // string
                 ctx.strokeStyle = b.color.string;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([3, 5]);
@@ -846,36 +711,35 @@
                 ctx.quadraticCurveTo(8, b.radius + b.stringLength * 0.6, 4, b.radius + b.stringLength);
                 ctx.stroke();
                 ctx.setLineDash([]);
-                
+
+                // balloon body
                 const grad = ctx.createRadialGradient(-8, -8, 5, 0, 0, b.radius);
                 grad.addColorStop(0, b.color.light);
                 grad.addColorStop(0.7, b.color.main);
                 grad.addColorStop(1, b.color.dark);
-                
                 ctx.shadowColor = 'rgba(0,0,0,0.2)';
                 ctx.shadowBlur = 12;
-                
                 ctx.beginPath();
                 ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
                 ctx.fillStyle = grad;
                 ctx.fill();
-                
+
+                // highlights
                 ctx.shadowBlur = 0;
                 ctx.globalAlpha = 0.4;
                 ctx.beginPath();
                 ctx.ellipse(-8, -10, 8, 5, -0.3, 0, Math.PI * 2);
                 ctx.fillStyle = 'white';
                 ctx.fill();
-                
                 ctx.globalAlpha = 0.15;
                 ctx.beginPath();
                 ctx.ellipse(-4, -6, 4, 3, -0.3, 0, Math.PI * 2);
                 ctx.fillStyle = 'white';
                 ctx.fill();
-                
+
+                // number
                 ctx.globalAlpha = 1.0;
                 ctx.shadowBlur = 0;
-                
                 ctx.fillStyle = 'white';
                 ctx.font = 'bold 20px "Segoe UI", sans-serif';
                 ctx.textAlign = 'center';
@@ -883,22 +747,21 @@
                 ctx.shadowColor = 'rgba(0,0,0,0.3)';
                 ctx.shadowBlur = 4;
                 ctx.fillText(b.value, 0, 2);
-                
                 ctx.restore();
             }
         }
 
         function drawSparrow(x, y) {
+            const clampedY = Math.min(Math.max(y, TOP_BOUNDARY), GROUND_Y - SPARROW_SIZE/2);
             const wingFlap = Math.sin(wingAngle) * 12;
-            
+
+            // shadow
             const shadowTargetX = x - 30;
             const shadowTargetY = GROUND_Y - 4;
-            const lerpFactor = 0.05;
-            shadowX += (shadowTargetX - shadowX) * lerpFactor;
-            
-            const shadowScale = 1 - (y / GROUND_Y) * 0.5;
+            shadowX += (shadowTargetX - shadowX) * 0.05;
+            const shadowScale = 1 - (clampedY / GROUND_Y) * 0.5;
             ctx.save();
-            ctx.globalAlpha = 0.2 + (1 - y / GROUND_Y) * 0.15;
+            ctx.globalAlpha = 0.2 + (1 - clampedY / GROUND_Y) * 0.15;
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.shadowColor = 'rgba(0,0,0,0)';
             ctx.shadowBlur = 0;
@@ -906,27 +769,27 @@
             ctx.ellipse(shadowX, shadowTargetY, 30 * shadowScale, 8 * shadowScale, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
-            
+
             ctx.save();
-            ctx.translate(x, y);
+            ctx.translate(x, clampedY);
             ctx.shadowColor = 'rgba(0,0,0,0.2)';
             ctx.shadowBlur = 8;
-            
+
+            // body
             ctx.fillStyle = '#8b6b4d';
             ctx.beginPath();
             ctx.ellipse(0, 0, 24, 18, 0, 0, Math.PI*2);
             ctx.fill();
-            
             ctx.fillStyle = '#b58a64';
             ctx.beginPath();
             ctx.ellipse(-4, -4, 14, 12, 0, 0, Math.PI*2);
             ctx.fill();
-            
             ctx.fillStyle = '#6f523b';
             ctx.beginPath();
             ctx.ellipse(-12, -6, 12, 8, -0.3, 0, Math.PI*2);
             ctx.fill();
-            
+
+            // eye
             ctx.fillStyle = '#1a1a1a';
             ctx.beginPath();
             ctx.arc(10, -6, 4, 0, Math.PI*2);
@@ -935,21 +798,24 @@
             ctx.beginPath();
             ctx.arc(11, -8, 1.5, 0, Math.PI*2);
             ctx.fill();
-            
+
+            // beak
             ctx.fillStyle = '#d49c3b';
             ctx.beginPath();
             ctx.moveTo(24, -2);
             ctx.lineTo(34, 2);
             ctx.lineTo(24, 6);
             ctx.fill();
-            
+
+            // tail
             ctx.fillStyle = '#5d3f2a';
             ctx.beginPath();
             ctx.moveTo(-24, -2);
             ctx.lineTo(-34, -10 + wingFlap * 0.2);
             ctx.lineTo(-28, 4 + wingFlap * 0.1);
             ctx.fill();
-            
+
+            // wings
             ctx.fillStyle = '#6f523b';
             ctx.shadowBlur = 4;
             ctx.beginPath();
@@ -959,7 +825,7 @@
             ctx.beginPath();
             ctx.ellipse(-4, -10 + wingFlap, 14, 6, -0.1, 0, Math.PI*2);
             ctx.fill();
-            
+
             ctx.fillStyle = '#6f523b';
             ctx.beginPath();
             ctx.ellipse(-4, 12 - wingFlap * 0.7, 16, 7, 0.2, 0, Math.PI*2);
@@ -968,7 +834,7 @@
             ctx.beginPath();
             ctx.ellipse(0, 10 - wingFlap * 0.7, 12, 5, 0.1, 0, Math.PI*2);
             ctx.fill();
-            
+
             ctx.shadowBlur = 0;
             ctx.restore();
         }
@@ -981,83 +847,55 @@
                 p.vy += p.gravity;
                 p.life -= p.decay;
                 p.rotation += p.rotSpeed;
-                
                 if (p.life <= 0) {
                     particles.splice(i, 1);
                     continue;
                 }
-                
                 ctx.save();
                 ctx.globalAlpha = p.life;
                 ctx.translate(p.x, p.y);
                 ctx.rotate(p.rotation);
-                
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                ctx.shadowBlur = 4;
+                const s = p.size;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s * 0.6, s * 0.8, 0, 0, Math.PI * 2);
+                ctx.fill();
                 if (p.type === 'balloon') {
-                    ctx.fillStyle = p.color;
-                    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-                    ctx.shadowBlur = 4;
-                    const s = p.size;
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, s * 0.6, s * 0.8, 0, 0, Math.PI * 2);
-                    ctx.fill();
                     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
                     ctx.lineWidth = 1;
                     ctx.stroke();
-                } else {
-                    ctx.fillStyle = p.color;
-                    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-                    ctx.shadowBlur = 4;
-                    const s = p.size * 0.5;
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, s, s * 0.4, 0, 0, Math.PI * 2);
-                    ctx.fill();
                 }
-                
                 ctx.restore();
             }
         }
 
         function drawFlash() {
             if (!flashEffect.active) return;
-            
             flashEffect.timer += 0.03;
             flashEffect.alpha = Math.max(0, 1 - flashEffect.timer * 3);
-            
             if (flashEffect.alpha <= 0) {
                 flashEffect.active = false;
                 return;
             }
-            
             ctx.save();
             ctx.globalAlpha = flashEffect.alpha * 0.3;
-            
-            const color = flashEffect.type === 'correct' ? '#00ff00' : '#ff0000';
-            ctx.fillStyle = color;
-            ctx.shadowColor = color;
+            ctx.fillStyle = flashEffect.type === 'correct' ? '#00ff00' : '#ff0000';
+            ctx.shadowColor = ctx.fillStyle;
             ctx.shadowBlur = 40;
             ctx.fillRect(0, 0, W, H);
-            
             ctx.restore();
         }
 
-        function draw() {
-            ctx.clearRect(0, 0, W, H);
-            drawSky();
-            drawClouds();
-
+        function drawGround() {
             ctx.fillStyle = '#5d8c5a';
-            ctx.fillRect(0, GROUND_Y, W, H-GROUND_Y+4);
+            ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y + 4);
             ctx.fillStyle = '#7daa6a';
-            ctx.fillRect(0, GROUND_Y-4, W, 8);
+            ctx.fillRect(0, GROUND_Y - 4, W, 8);
+        }
 
-            drawBalloons();
-
-            const sx = 120, sy = Math.min(sparrowY, GROUND_Y - SPARROW_SIZE/2);
-            drawSparrow(sx, sy);
-
-            drawParticles();
-            drawFlash();
-
+        function drawOverlay() {
             if (gameCompleted) {
                 ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.fillRect(0, 0, W, H);
@@ -1098,25 +936,35 @@
             }
         }
 
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            drawSky();
+            drawClouds();
+            drawGround();
+            drawBalloons();
+            drawSparrow(120, sparrowY);
+            drawParticles();
+            drawFlash();
+            drawOverlay();
+        }
+
+        // --- Update ---
         function update(deltaSec) {
             if (!gameActive || gameCompleted || gamePaused) return;
 
             wingAngle += deltaSec * 8;
-
             velocity += currentGravity;
             sparrowY += velocity;
 
+            if (sparrowY < TOP_BOUNDARY) {
+                sparrowY = TOP_BOUNDARY;
+                if (velocity < 0) velocity = 0;
+            }
             if (sparrowY + SPARROW_SIZE/2 > GROUND_Y) {
                 sparrowY = GROUND_Y - SPARROW_SIZE/2;
                 gameActive = false;
                 return;
             }
-            
-            if (sparrowY < 10) {
-                sparrowY = 10;
-                if (velocity < 0) velocity = 0;
-            }
-
             if (life <= 0) {
                 gameActive = false;
                 updateLifeDisplay();
@@ -1126,9 +974,7 @@
             checkBalloonCollisions();
 
             for (let i = balloons.length - 1; i >= 0; i--) {
-                if (balloons[i].x < -50) {
-                    balloons.splice(i, 1);
-                }
+                if (balloons[i].x < -50) balloons.splice(i, 1);
             }
 
             if (phase === 'showing' && balloons.length === 0 && currentExample) {
@@ -1150,15 +996,10 @@
             } else if (phase === 'waiting') {
                 timeSinceLastExample += deltaSec;
                 const remaining = Math.ceil(nextExampleTime - timeSinceLastExample);
-                
-                if (remaining >= 1 && remaining <= 3) {
-                    const newValue = remaining;
-                    if (newValue !== countdownValue) {
-                        countdownValue = newValue;
-                        exampleText.innerText = `⏳ Следующий пример через ${countdownValue}...`;
-                    }
+                if (remaining >= 1 && remaining <= 3 && remaining !== countdownValue) {
+                    countdownValue = remaining;
+                    exampleText.innerText = `⏳ Следующий пример через ${countdownValue}...`;
                 }
-                
                 if (timeSinceLastExample >= nextExampleTime) {
                     spawnExample();
                     timeSinceLastExample = 0;
@@ -1169,54 +1010,37 @@
             updateLifeDisplay();
         }
 
+        // --- Game loop ---
         function gameLoop(timestamp) {
-            if (!lastTimestamp) {
-                lastTimestamp = timestamp;
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-            
+            if (!lastTimestamp) lastTimestamp = timestamp;
             let delta = (timestamp - lastTimestamp) / 1000;
-            lastTimestamp = timestamp;
-            
             if (delta > 0.1) delta = 0.1;
-            if (delta < 0.001) delta = 0.001;
-            
+            lastTimestamp = timestamp;
+
             deltaAccumulator += delta;
-            
-            while (deltaAccumulator >= FIXED_DELTA) {
-                update(FIXED_DELTA);
-                deltaAccumulator -= FIXED_DELTA;
+            while (deltaAccumulator >= 0.016) {
+                update(0.016);
+                deltaAccumulator -= 0.016;
             }
-            
+
             draw();
             requestAnimationFrame(gameLoop);
         }
 
-        function attachEvents() {
-            canvas.addEventListener('pointerdown', function(e) {
-                e.preventDefault();
-                handleTap(e);
-            });
-            canvas.addEventListener('contextmenu', e => e.preventDefault());
-        }
+        // --- Event bindings ---
+        canvas.addEventListener('pointerdown', handleTap);
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-        restartBtn.addEventListener('click', function(){
+        restartBtn.addEventListener('click', () => {
             resetGame();
             lastTimestamp = 0;
-            deltaAccumulator = 0;
         });
 
-        playBtn.addEventListener('click', function(){
-            startGame();
-        });
+        playBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', togglePause);
 
-        pauseBtn.addEventListener('click', function(){
-            togglePause();
-        });
-
+        // --- Init ---
         resetGame();
-        attachEvents();
         requestAnimationFrame(gameLoop);
     })();
 </script>
