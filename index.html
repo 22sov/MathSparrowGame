@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Воробей-математик 2.0</title>
+    <title>Воробей: шары и счёт</title>
     <style>
         * {
             margin: 0;
@@ -165,18 +165,6 @@
             margin-top: 4px;
             letter-spacing: 6px;
         }
-        .version-badge {
-            display: inline-block;
-            background: rgba(255, 215, 0, 0.3);
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            color: #f5f0d7;
-            letter-spacing: 2px;
-            margin-top: 2px;
-            border: 1px solid rgba(255, 215, 0, 0.2);
-        }
         .play-btn {
             background: linear-gradient(145deg, #f7d94e, #f0b830);
             border: none;
@@ -231,10 +219,9 @@
             <div class="game-title">
                 ВОРОБЕЙ-МАТЕМАТИК
                 <span>ШАРЫ И СЧИТАЙ</span>
-                <span class="version-badge">✦ ВЕРСИЯ 2.0 ✦</span>
             </div>
             <button class="play-btn" id="playBtn">ИГРАТЬ</button>
-            <div class="creator-credit">Created by Tudvasov</div>
+            <div class="creator-credit">Создатель игры: Гриша Тудвасов</div>
         </div>
     </div>
     <div class="example-area" id="exampleArea">
@@ -281,7 +268,7 @@
         let maxNumber = 20;
         let wrongPenalty = 0;
         let currentExample = null;
-        let phase = 'idle';
+        let phase = 'idle'; // 'idle' | 'showing' | 'waiting'
         let timeSinceLastExample = 0;
         let nextExampleTime = 1.5;
         let countdownValue = 0;
