@@ -251,7 +251,10 @@
         const BASE_GRAVITY = 0.0875;
         const JUMP_HEIGHT = 80;
         const EXAMPLES_PER_ROUND = 10;
-        const BALLOON_SPEED = 1.8;
+        const BALLOON_SPEED = 1.8; // пикселей за 1/60 секунды (для совместимости)
+        
+        // Множитель для пересчета скорости в пиксели в секунду
+        const SPEED_MULTIPLIER = 60;
 
         // --- Game state ---
         let gameActive = false;
@@ -278,6 +281,8 @@
         let flashEffect = { active: false, type: '', alpha: 0, timer: 0 };
         let shadowX = 120;
         let isTapProcessing = false;
+        
+        // Для deltaTime
         let lastTimestamp = 0;
         let deltaAccumulator = 0;
 
@@ -352,6 +357,7 @@
             wingAngle = 0;
             flashEffect.active = false;
             shadowX = 120;
+            lastTimestamp = 0;
             setupRound(1);
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
@@ -373,6 +379,7 @@
             wingAngle = 0;
             flashEffect.active = false;
             shadowX = 120;
+            lastTimestamp = 0;
             setupRound(1);
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
@@ -650,9 +657,9 @@
             ctx.fillRect(0, 0, W, GROUND_Y);
         }
 
-        function drawClouds() {
+        function drawClouds(deltaSec) {
             for (const cloud of clouds) {
-                cloud.x += cloud.speed * 0.3;
+                cloud.x += cloud.speed * 60 * deltaSec;
                 if (cloud.x > W + cloud.w) {
                     cloud.x = -cloud.w;
                     cloud.y = 20 + Math.random() * 120;
@@ -680,10 +687,11 @@
             }
         }
 
-        function drawBalloons() {
+        function drawBalloons(deltaSec) {
             for (const b of balloons) {
-                b.x -= BALLOON_SPEED;
-                b.swingPhase += 0.03;
+                // Движение шаров с учетом deltaTime
+                b.x -= BALLOON_SPEED * SPEED_MULTIPLIER * deltaSec;
+                b.swingPhase += 0.03 * SPEED_MULTIPLIER * deltaSec;
                 const swing = Math.sin(b.swingPhase) * 2;
 
                 ctx.save();
@@ -826,14 +834,14 @@
             ctx.restore();
         }
 
-        function drawParticles() {
+        function drawParticles(deltaSec) {
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += p.gravity;
-                p.life -= p.decay;
-                p.rotation += p.rotSpeed;
+                p.x += p.vx * SPEED_MULTIPLIER * deltaSec;
+                p.y += p.vy * SPEED_MULTIPLIER * deltaSec;
+                p.vy += p.gravity * SPEED_MULTIPLIER * deltaSec;
+                p.life -= p.decay * SPEED_MULTIPLIER * deltaSec;
+                p.rotation += p.rotSpeed * SPEED_MULTIPLIER * deltaSec;
                 if (p.life <= 0) {
                     particles.splice(i, 1);
                     continue;
@@ -860,7 +868,7 @@
 
         function drawFlash() {
             if (!flashEffect.active) return;
-            flashEffect.timer += 0.03;
+            flashEffect.timer += 0.03 * SPEED_MULTIPLIER * 0.016; // для совместимости
             flashEffect.alpha = Math.max(0, 1 - flashEffect.timer * 3);
             if (flashEffect.alpha <= 0) {
                 flashEffect.active = false;
@@ -923,14 +931,14 @@
             }
         }
 
-        function draw() {
+        function draw(deltaSec) {
             ctx.clearRect(0, 0, W, H);
             drawSky();
-            drawClouds();
+            drawClouds(deltaSec);
             drawGround();
-            drawBalloons();
+            drawBalloons(deltaSec);
             drawSparrow(120, sparrowY);
-            drawParticles();
+            drawParticles(deltaSec);
             drawFlash();
             drawOverlay();
         }
@@ -939,9 +947,10 @@
         function update(deltaSec) {
             if (!gameActive || gameCompleted || gamePaused) return;
 
-            wingAngle += deltaSec * 8;
-            velocity += currentGravity;
-            sparrowY += velocity;
+            // Обновление с учетом реального времени
+            wingAngle += deltaSec * 8 * SPEED_MULTIPLIER;
+            velocity += currentGravity * SPEED_MULTIPLIER * deltaSec;
+            sparrowY += velocity * SPEED_MULTIPLIER * deltaSec;
 
             if (sparrowY < TOP_BOUNDARY) {
                 sparrowY = TOP_BOUNDARY;
@@ -997,20 +1006,22 @@
             updateLifeDisplay();
         }
 
-        // --- Game loop ---
+        // --- Game loop with proper deltaTime ---
         function gameLoop(timestamp) {
             if (!lastTimestamp) lastTimestamp = timestamp;
-            let delta = (timestamp - lastTimestamp) / 1000;
-            if (delta > 0.1) delta = 0.1;
+            let delta = (timestamp - lastTimestamp) / 1000; // реальное время в секундах
+            
+            // Защита от слишком больших скачков (например, при переключении вкладок)
+            if (delta > 0.05) delta = 0.05;
+            
             lastTimestamp = timestamp;
-
-            deltaAccumulator += delta;
-            while (deltaAccumulator >= 0.016) {
-                update(0.016);
-                deltaAccumulator -= 0.016;
-            }
-
-            draw();
+            
+            // Обновляем игру с реальным deltaTime
+            update(delta);
+            
+            // Рисуем с тем же deltaTime
+            draw(delta);
+            
             requestAnimationFrame(gameLoop);
         }
 
