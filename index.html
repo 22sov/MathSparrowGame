@@ -194,6 +194,21 @@
             text-shadow: 0 1px 4px rgba(0,0,0,0.3);
             margin-top: 4px;
         }
+        .sound-btn {
+            background: rgba(255, 245, 200, 0.4);
+            border: none;
+            color: #1f3d47;
+            font-size: 1.1rem;
+            padding: 2px 10px;
+            border-radius: 30px;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: all 0.1s ease;
+            line-height: 1.6;
+        }
+        .sound-btn:active {
+            transform: scale(0.9);
+        }
         @media (max-width: 440px) {
             .game-wrapper { padding: 10px; }
             .example-text { font-size: 1.3rem; }
@@ -202,6 +217,7 @@
             .game-title { font-size: 1.6rem; }
             .game-title span { font-size: 0.8rem; }
             .creator-credit { font-size: 0.6rem; }
+            .sound-btn { font-size: 0.9rem; padding: 2px 8px; }
         }
     </style>
 </head>
@@ -210,6 +226,7 @@
     <div class="info-panel">
         <span class="life-badge" id="lifeDisplay">❤️ 10</span>
         <span class="round-badge" id="roundDisplay">Раунд 1</span>
+        <button class="sound-btn" id="soundBtn">🔊</button>
         <button class="pause-btn" id="pauseBtn">⏸️</button>
         <button class="restart-btn" id="restartBtn">↺</button>
     </div>
@@ -241,6 +258,120 @@
         const playBtn = document.getElementById('playBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const restartBtn = document.getElementById('restartBtn');
+        const soundBtn = document.getElementById('soundBtn');
+
+        // --- Sound System ---
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                switch(type) {
+                    case 'boing':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.12);
+                        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+                        oscillator.start(audioCtx.currentTime);
+                        oscillator.stop(audioCtx.currentTime + 0.15);
+                        break;
+
+                    case 'pop':
+                        const popOsc = audioCtx.createOscillator();
+                        const popGain = audioCtx.createGain();
+                        popOsc.connect(popGain);
+                        popGain.connect(audioCtx.destination);
+                        popOsc.type = 'sine';
+                        popOsc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                        popOsc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+                        popGain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        popGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                        popOsc.start(audioCtx.currentTime);
+                        popOsc.stop(audioCtx.currentTime + 0.1);
+                        return;
+
+                    case 'success':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+                        oscillator.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.2);
+                        gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                        oscillator.start(audioCtx.currentTime);
+                        oscillator.stop(audioCtx.currentTime + 0.25);
+                        break;
+
+                    case 'sad':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(500, audioCtx.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(250, audioCtx.currentTime + 0.4);
+                        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
+                        oscillator.start(audioCtx.currentTime);
+                        oscillator.stop(audioCtx.currentTime + 0.45);
+                        break;
+
+                    case 'round':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+                        gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                        oscillator.start(audioCtx.currentTime);
+                        oscillator.stop(audioCtx.currentTime + 0.25);
+                        break;
+
+                    case 'gameover':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(500, audioCtx.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.5);
+                        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+                        oscillator.start(audioCtx.currentTime);
+                        oscillator.stop(audioCtx.currentTime + 0.6);
+                        break;
+
+                    case 'victory':
+                        oscillator.type = 'square';
+                        const notes = [523, 659, 784, 1047];
+                        notes.forEach((freq, i) => {
+                            const osc = audioCtx.createOscillator();
+                            const gain = audioCtx.createGain();
+                            osc.connect(gain);
+                            gain.connect(audioCtx.destination);
+                            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.12);
+                            gain.gain.setValueAtTime(0.1, audioCtx.currentTime + i * 0.12);
+                            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * 0.12 + 0.15);
+                            osc.start(audioCtx.currentTime + i * 0.12);
+                            osc.stop(audioCtx.currentTime + i * 0.12 + 0.15);
+                        });
+                        return;
+                }
+            } catch(e) {}
+        }
+
+        soundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            soundBtn.innerText = soundEnabled ? '🔊' : '🔇';
+            if (soundEnabled) initAudio();
+        });
 
         // --- Constants ---
         const W = 400, H = 480;
@@ -250,10 +381,8 @@
         const MAX_UPWARD_SPEED = -6.0;
         const BASE_GRAVITY = 0.0875;
         const JUMP_HEIGHT = 80;
-        const EXAMPLES_PER_ROUND = 10;
-        const BALLOON_SPEED = 1.8; // пикселей за 1/60 секунды (для совместимости)
-        
-        // Множитель для пересчета скорости в пиксели в секунду
+        const EXAMPLES_PER_ROUND = 5; // изменено с 10 на 5
+        const BALLOON_SPEED = 1.8;
         const SPEED_MULTIPLIER = 60;
 
         // --- Game state ---
@@ -271,7 +400,7 @@
         let maxNumber = 20;
         let wrongPenalty = 0;
         let currentExample = null;
-        let phase = 'idle'; // 'idle' | 'showing' | 'waiting'
+        let phase = 'idle';
         let timeSinceLastExample = 0;
         let nextExampleTime = 1.5;
         let countdownValue = 0;
@@ -281,10 +410,7 @@
         let flashEffect = { active: false, type: '', alpha: 0, timer: 0 };
         let shadowX = 120;
         let isTapProcessing = false;
-        
-        // Для deltaTime
         let lastTimestamp = 0;
-        let deltaAccumulator = 0;
 
         // --- Clouds ---
         const clouds = Array.from({ length: 6 }, () => ({
@@ -351,7 +477,6 @@
             life = 10;
             sparrowY = 240;
             velocity = 0;
-            deltaAccumulator = 0;
             balloons = [];
             particles = [];
             wingAngle = 0;
@@ -384,6 +509,7 @@
             updateLifeDisplay();
             exampleText.innerText = '⏳ Ожидание примера...';
             playOverlay.classList.add('hidden');
+            initAudio();
         }
 
         function togglePause() {
@@ -504,6 +630,13 @@
             flashEffect.timer = 0;
             createBalloonPop(balloon.x, balloon.y, balloon.color.main);
 
+            playSound('pop');
+            if (isCorrect) {
+                playSound('success');
+            } else {
+                playSound('sad');
+            }
+
             if (isCorrect) {
                 life = Math.min(life + 5, 99);
                 updateLifeDisplay();
@@ -514,6 +647,7 @@
                 exampleText.innerText = wrongPenalty > 0 ? `❌ Неверно! -${wrongPenalty} сердечка` : '❌ Неверно';
                 if (life <= 0) {
                     gameActive = false;
+                    playSound('gameover');
                     return;
                 }
             }
@@ -526,6 +660,7 @@
                     gameCompleted = true;
                     gameActive = false;
                     exampleText.innerText = '🏆 Ты настоящий Эйнштейн и Джек Воробей! 🏆';
+                    playSound('victory');
                     return;
                 }
                 gamePaused = true;
@@ -534,6 +669,7 @@
                 const nextRound = round + 1;
                 const roundNames = ['', 'Первый', 'Второй', 'Третий'];
                 exampleText.innerText = `🎉 ${roundNames[nextRound-1]} раунд успешно пройден! 🎉`;
+                playSound('round');
 
                 setTimeout(() => {
                     if (gameActive) {
@@ -626,8 +762,11 @@
 
             life = Math.max(0, life - 1);
             updateLifeDisplay();
+            playSound('boing');
+
             if (life <= 0) {
                 gameActive = false;
+                playSound('gameover');
                 isTapProcessing = false;
                 return;
             }
@@ -658,6 +797,8 @@
         }
 
         function drawClouds(deltaSec) {
+            if (gamePaused) return;
+            
             for (const cloud of clouds) {
                 cloud.x += cloud.speed * 60 * deltaSec;
                 if (cloud.x > W + cloud.w) {
@@ -688,8 +829,9 @@
         }
 
         function drawBalloons(deltaSec) {
+            if (!gameActive || gameCompleted || gamePaused) return;
+            
             for (const b of balloons) {
-                // Движение шаров с учетом deltaTime
                 b.x -= BALLOON_SPEED * SPEED_MULTIPLIER * deltaSec;
                 b.swingPhase += 0.03 * SPEED_MULTIPLIER * deltaSec;
                 const swing = Math.sin(b.swingPhase) * 2;
@@ -697,7 +839,6 @@
                 ctx.save();
                 ctx.translate(b.x, b.y + swing);
 
-                // string
                 ctx.strokeStyle = b.color.string;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([3, 5]);
@@ -707,7 +848,6 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // balloon body
                 const grad = ctx.createRadialGradient(-8, -8, 5, 0, 0, b.radius);
                 grad.addColorStop(0, b.color.light);
                 grad.addColorStop(0.7, b.color.main);
@@ -719,7 +859,6 @@
                 ctx.fillStyle = grad;
                 ctx.fill();
 
-                // highlights
                 ctx.shadowBlur = 0;
                 ctx.globalAlpha = 0.4;
                 ctx.beginPath();
@@ -732,7 +871,6 @@
                 ctx.fillStyle = 'white';
                 ctx.fill();
 
-                // number
                 ctx.globalAlpha = 1.0;
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = 'white';
@@ -750,7 +888,6 @@
             const clampedY = Math.min(Math.max(y, TOP_BOUNDARY), GROUND_Y - SPARROW_SIZE/2);
             const wingFlap = Math.sin(wingAngle) * 12;
 
-            // shadow
             const shadowTargetX = x - 30;
             const shadowTargetY = GROUND_Y - 4;
             shadowX += (shadowTargetX - shadowX) * 0.05;
@@ -770,7 +907,6 @@
             ctx.shadowColor = 'rgba(0,0,0,0.2)';
             ctx.shadowBlur = 8;
 
-            // body
             ctx.fillStyle = '#8b6b4d';
             ctx.beginPath();
             ctx.ellipse(0, 0, 24, 18, 0, 0, Math.PI*2);
@@ -784,7 +920,6 @@
             ctx.ellipse(-12, -6, 12, 8, -0.3, 0, Math.PI*2);
             ctx.fill();
 
-            // eye
             ctx.fillStyle = '#1a1a1a';
             ctx.beginPath();
             ctx.arc(10, -6, 4, 0, Math.PI*2);
@@ -794,7 +929,6 @@
             ctx.arc(11, -8, 1.5, 0, Math.PI*2);
             ctx.fill();
 
-            // beak
             ctx.fillStyle = '#d49c3b';
             ctx.beginPath();
             ctx.moveTo(24, -2);
@@ -802,7 +936,6 @@
             ctx.lineTo(24, 6);
             ctx.fill();
 
-            // tail
             ctx.fillStyle = '#5d3f2a';
             ctx.beginPath();
             ctx.moveTo(-24, -2);
@@ -810,7 +943,6 @@
             ctx.lineTo(-28, 4 + wingFlap * 0.1);
             ctx.fill();
 
-            // wings
             ctx.fillStyle = '#6f523b';
             ctx.shadowBlur = 4;
             ctx.beginPath();
@@ -835,6 +967,8 @@
         }
 
         function drawParticles(deltaSec) {
+            if (gamePaused) return;
+            
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
                 p.x += p.vx * SPEED_MULTIPLIER * deltaSec;
@@ -868,7 +1002,7 @@
 
         function drawFlash() {
             if (!flashEffect.active) return;
-            flashEffect.timer += 0.03 * SPEED_MULTIPLIER * 0.016; // для совместимости
+            flashEffect.timer += 0.03 * SPEED_MULTIPLIER * 0.016;
             flashEffect.alpha = Math.max(0, 1 - flashEffect.timer * 3);
             if (flashEffect.alpha <= 0) {
                 flashEffect.active = false;
@@ -947,7 +1081,6 @@
         function update(deltaSec) {
             if (!gameActive || gameCompleted || gamePaused) return;
 
-            // Обновление с учетом реального времени
             wingAngle += deltaSec * 8 * SPEED_MULTIPLIER;
             velocity += currentGravity * SPEED_MULTIPLIER * deltaSec;
             sparrowY += velocity * SPEED_MULTIPLIER * deltaSec;
@@ -959,11 +1092,13 @@
             if (sparrowY + SPARROW_SIZE/2 > GROUND_Y) {
                 sparrowY = GROUND_Y - SPARROW_SIZE/2;
                 gameActive = false;
+                playSound('gameover');
                 return;
             }
             if (life <= 0) {
                 gameActive = false;
                 updateLifeDisplay();
+                playSound('gameover');
                 return;
             }
 
@@ -1006,22 +1141,15 @@
             updateLifeDisplay();
         }
 
-        // --- Game loop with proper deltaTime ---
+        // --- Game loop ---
         function gameLoop(timestamp) {
             if (!lastTimestamp) lastTimestamp = timestamp;
-            let delta = (timestamp - lastTimestamp) / 1000; // реальное время в секундах
-            
-            // Защита от слишком больших скачков (например, при переключении вкладок)
+            let delta = (timestamp - lastTimestamp) / 1000;
             if (delta > 0.05) delta = 0.05;
-            
             lastTimestamp = timestamp;
-            
-            // Обновляем игру с реальным deltaTime
+
             update(delta);
-            
-            // Рисуем с тем же deltaTime
             draw(delta);
-            
             requestAnimationFrame(gameLoop);
         }
 
