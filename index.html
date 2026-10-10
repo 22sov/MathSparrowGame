@@ -381,7 +381,7 @@
         const MAX_UPWARD_SPEED = -6.0;
         const BASE_GRAVITY = 0.0875;
         const JUMP_HEIGHT = 80;
-        const EXAMPLES_PER_ROUND = 5; // изменено с 10 на 5
+        const EXAMPLES_PER_ROUND = 5;
         const BALLOON_SPEED = 1.8;
         const SPEED_MULTIPLIER = 60;
 
@@ -537,7 +537,7 @@
             }
         }
 
-        // --- Example generation ---
+        // --- Example generation (2 варианта для раундов 1-2, 3 варианта для раунда 3) ---
         function generateExample() {
             const minVal = minNumber;
             const maxVal = maxNumber;
@@ -560,25 +560,29 @@
                 text = `${a} – ${b} = ?`;
             }
 
+            // Количество вариантов зависит от раунда
+            const optionCount = (round === 3) ? 3 : 2;
             const options = new Set([correct]);
             let attempts = 0;
-            while (options.size < 3 && attempts < 1000) {
-                const offset = Math.floor(Math.random() * 11) - 5;
+
+            while (options.size < optionCount && attempts < 1000) {
+                const offset = (Math.random() < 0.5 ? 1 : -1) * (1 + Math.floor(Math.random() * 5));
                 let fake = correct + offset;
-                if (fake < minVal) fake = Math.floor(Math.random() * 10) + minVal;
-                if (fake > maxVal) fake = maxVal - Math.floor(Math.random() * 10);
+                if (fake < minVal) fake = minVal + Math.floor(Math.random() * 5);
+                if (fake > maxVal) fake = maxVal - Math.floor(Math.random() * 5);
                 if (fake !== correct && fake >= minVal && fake <= maxVal) {
                     options.add(fake);
                 }
                 attempts++;
             }
-            const fallback = [correct+1, correct-1, correct+2, correct-2];
+            // Запасные варианты
+            const fallback = [correct + 1, correct - 1, correct + 2, correct - 2, correct + 3, correct - 3];
             for (const v of fallback) {
-                if (v >= minVal && v <= maxVal && v !== correct && options.size < 3) {
+                if (v >= minVal && v <= maxVal && v !== correct && options.size < optionCount) {
                     options.add(v);
                 }
             }
-            while (options.size < 3) {
+            while (options.size < optionCount) {
                 const extra = Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
                 if (!options.has(extra)) options.add(extra);
             }
@@ -592,6 +596,7 @@
             return { text, correct, options: optArr };
         }
 
+        // --- Spawn balloons: 2 в раундах 1-2, 3 в раунде 3 ---
         function spawnExample() {
             if (!gameActive || gameCompleted || gamePaused) return;
             currentExample = generateExample();
@@ -599,17 +604,26 @@
             countdownValue = 0;
             balloons = [];
 
-            const colors = [...BALLOON_COLORS].sort(() => Math.random() - 0.5).slice(0, 3);
-            const yPositions = [40, 195, 350];
+            const isThirdRound = (round === 3);
+            const balloonCount = isThirdRound ? 3 : 2;
+            const colors = [...BALLOON_COLORS].sort(() => Math.random() - 0.5).slice(0, balloonCount);
+
+            // Y-позиции: для 2 шаров — выше (80 и 260), для 3 шаров — как было (40, 195, 350)
+            let yPositions;
+            if (isThirdRound) {
+                yPositions = [40, 195, 350];
+            } else {
+                yPositions = [80, 260];
+            }
             const shuffledPositions = [...yPositions].sort(() => Math.random() - 0.5);
 
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < balloonCount; i++) {
                 balloons.push({
                     x: W + 30,
                     y: shuffledPositions[i] + (Math.random() - 0.5) * 15,
                     value: currentExample.options[i],
                     isCorrect: currentExample.options[i] === currentExample.correct,
-                    radius: 32,
+                    radius: isThirdRound ? 32 : 34,
                     color: colors[i % colors.length],
                     stringLength: 50,
                     swingPhase: Math.random() * Math.PI * 2,
@@ -874,7 +888,7 @@
                 ctx.globalAlpha = 1.0;
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = 'white';
-                ctx.font = 'bold 20px "Segoe UI", sans-serif';
+                ctx.font = 'bold 22px "Segoe UI", sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.shadowColor = 'rgba(0,0,0,0.3)';
